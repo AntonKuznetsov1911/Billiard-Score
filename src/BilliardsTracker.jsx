@@ -354,6 +354,41 @@ function PlayerBall({ color, size = 14 }) {
   );
 }
 
+function IconTrophy({ size = 14, color = COLORS.brass }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: "inline-block", verticalAlign: "-2px" }} aria-hidden="true">
+      <path d="M7 4 h10 v5 a5 5 0 0 1 -10 0 Z" fill={color} stroke="#00000022" strokeWidth="0.6" />
+      <path d="M7 5.5 H4.4 a0.4 0.4 0 0 0 -0.4 0.4 c0 2.6 1.6 4.3 3.4 4.7" fill="none" stroke={color} strokeWidth="1.6" />
+      <path d="M17 5.5 h2.6 a0.4 0.4 0 0 1 0.4 0.4 c0 2.6 -1.6 4.3 -3.4 4.7" fill="none" stroke={color} strokeWidth="1.6" />
+      <rect x="10.8" y="13.6" width="2.4" height="3" fill={color} />
+      <rect x="8" y="16.6" width="8" height="2.6" rx="1" fill={color} stroke="#00000022" strokeWidth="0.5" />
+    </svg>
+  );
+}
+
+function IconTarget({ size = 14, color = COLORS.brass }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: "inline-block", verticalAlign: "-2px" }} aria-hidden="true">
+      <circle cx="12" cy="12" r="9" fill="none" stroke={color} strokeWidth="2" />
+      <circle cx="12" cy="12" r="5" fill="none" stroke={color} strokeWidth="2" />
+      <circle cx="12" cy="12" r="1.6" fill={color} />
+    </svg>
+  );
+}
+
+function IconDice({ size = 14, color = COLORS.chalk }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: "inline-block", verticalAlign: "-2px" }} aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke={color} strokeWidth="2" />
+      <circle cx="8" cy="8" r="1.6" fill={color} />
+      <circle cx="16" cy="8" r="1.6" fill={color} />
+      <circle cx="8" cy="16" r="1.6" fill={color} />
+      <circle cx="16" cy="16" r="1.6" fill={color} />
+      <circle cx="12" cy="12" r="1.6" fill={color} />
+    </svg>
+  );
+}
+
 function buildBracketRounds(participants) {
   const rounds = [];
   const firstRound = [];
@@ -835,7 +870,7 @@ function makeStyles(dark) {
         cardBg: "rgba(20,22,18,0.34)",
         cardBorder: "rgba(255,255,255,0.10)",
         text: "#F1EAD8",
-        sub: "#B9AF98",
+        sub: "#CDC3A6",
         inputBg: "rgba(255,255,255,0.07)",
         inputBorder: "rgba(255,255,255,0.18)",
         chipBg: "rgba(255,255,255,0.09)",
@@ -961,6 +996,7 @@ function makeStyles(dark) {
     selectChipActive: { background: COLORS.chalk, color: "#fff" },
     diceSection: { marginTop: "16px", paddingTop: "14px", borderTop: `1px dashed ${T.chipBorder}` },
     diceBtn: { padding: "9px 14px", borderRadius: "8px", border: `1.5px solid ${COLORS.chalk}`, background: dark ? "rgba(255,255,255,0.05)" : "#fff", color: COLORS.chalk, fontWeight: 700, fontSize: "12.5px" },
+    ghostBtn: { padding: "7px 10px", borderRadius: "8px", border: "1px solid transparent", background: "transparent", color: T.sub, fontWeight: 600, fontSize: "12px" },
     diceRow: { display: "flex", flexWrap: "wrap", gap: "14px", marginTop: "14px" },
     diceCard: { display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" },
     diceFace: { fontSize: "32px", lineHeight: 1, color: dark ? "#E7CE93" : COLORS.wood },
@@ -1916,7 +1952,7 @@ export default function BilliardsTracker() {
 
       <div style={styles.outerBg}>
         <TableArt gameType={data.gameType} />
-        <div style={styles.outerOverlay} />
+        <div style={{ ...styles.outerOverlay, ...(activeGame ? { background: "rgba(4,10,7,0.45)" } : {}) }} />
       </div>
 
       <div style={styles.page}>
@@ -1980,7 +2016,7 @@ export default function BilliardsTracker() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
                         <p style={styles.hint}>Дисциплина</p>
                         <button
-                          style={styles.diceBtn}
+                          style={styles.ghostBtn}
                           onClick={() => {
                             setOpenRuleKey(data.russianMode || "free");
                             setRulesOpen(true);
@@ -2040,7 +2076,7 @@ export default function BilliardsTracker() {
 
                   {!isKolhoz && (selected.length === 4 || selected.length === 8) && (
                     <button style={{ ...styles.diceBtn, marginTop: "10px", width: "100%" }} onClick={startTournament}>
-                      🏆 Турнир на выбывание ({selected.length} участника{selected.length === 4 ? "" : "ов"})
+                      <IconTrophy /> Турнир на выбывание ({selected.length} участника{selected.length === 4 ? "" : "ов"})
                     </button>
                   )}
 
@@ -2048,7 +2084,7 @@ export default function BilliardsTracker() {
                     <div style={styles.diceSection}>
                       <p style={styles.hint}>Кто разбивает первым?</p>
                       <button style={styles.diceBtn} onClick={() => rollDiceFor(selected)} disabled={diceRolling}>
-                        🎲 Кинуть кубики
+                        <IconDice /> Кинуть кубики
                       </button>
 
                       {diceRolls && (
@@ -2081,7 +2117,7 @@ export default function BilliardsTracker() {
 
                       {!diceRolling && breakerInfo.breakerId && (
                         <div style={styles.breakerBanner}>
-                          🎯 Первым разбивает: <strong>{nameById(breakerInfo.breakerId)}</strong>
+                          <IconTarget /> Первым разбивает: <strong>{nameById(breakerInfo.breakerId)}</strong>
                         </div>
                       )}
                     </div>
@@ -2108,7 +2144,7 @@ export default function BilliardsTracker() {
 
                   {!isKolhoz && selected.length >= 2 && (
                     <button
-                      style={{ ...styles.diceBtn, marginTop: "10px" }}
+                      style={{ ...styles.ghostBtn, marginTop: "10px" }}
                       onClick={() => setAdvancedOpen((o) => !o)}
                     >
                       {advancedOpen ? "▲ Скрыть доп. настройки" : "▾ Формат и фора"}
@@ -2196,10 +2232,12 @@ export default function BilliardsTracker() {
 
               {!activeGame && data.activeBracket && (
                 <div style={styles.card}>
-                  <h2 style={styles.h2}>🏆 Турнир на выбывание</h2>
+                  <h2 style={styles.h2}>
+                    <IconTrophy size={16} /> Турнир на выбывание
+                  </h2>
                   {data.activeBracket.champion && (
                     <div style={{ ...styles.breakerBanner, borderColor: "#3E9B5C" }}>
-                      🏆 Чемпион турнира: <strong>{nameById(data.activeBracket.champion)}</strong>
+                      <IconTrophy /> Чемпион турнира: <strong>{nameById(data.activeBracket.champion)}</strong>
                     </div>
                   )}
                   {data.activeBracket.rounds.map((round, ri) => (
@@ -2222,12 +2260,12 @@ export default function BilliardsTracker() {
                           <span style={{ fontSize: "13px" }}>
                             <span style={{ fontWeight: m.winnerId && m.winnerId === m.a ? 700 : 400 }}>
                               {m.a ? nameById(m.a) : "?"}
-                              {m.winnerId && m.winnerId === m.a ? " 🏆" : ""}
+                              {m.winnerId && m.winnerId === m.a ? <IconTrophy size={12} /> : ""}
                             </span>
                             {" vs "}
                             <span style={{ fontWeight: m.winnerId && m.winnerId === m.b ? 700 : 400 }}>
                               {m.b ? nameById(m.b) : "?"}
-                              {m.winnerId && m.winnerId === m.b ? " 🏆" : ""}
+                              {m.winnerId && m.winnerId === m.b ? <IconTrophy size={12} /> : ""}
                             </span>
                           </span>
                           {m.a && m.b && !m.winnerId && (
@@ -2274,12 +2312,12 @@ export default function BilliardsTracker() {
                   )}
                   {!gameMode && activeGame.breakerId && (
                     <div style={styles.breakerBanner}>
-                      🎯 Первым разбивал: <strong>{nameById(activeGame.breakerId)}</strong>
+                      <IconTarget /> Первым разбивал: <strong>{nameById(activeGame.breakerId)}</strong>
                     </div>
                   )}
                   {reachedId && (
                     <div style={{ ...styles.breakerBanner, borderColor: "#3E9B5C" }}>
-                      🏆 <strong>{nameById(reachedId)}</strong> достиг цели ({targetOf(reachedId)} {gm.unit})!{" "}
+                      <IconTrophy /> <strong>{nameById(reachedId)}</strong> достиг цели ({targetOf(reachedId)} {gm.unit})!{" "}
                       <button
                         style={{ ...styles.brassBtn, marginTop: "8px", width: "100%" }}
                         onClick={() => finalizeGame(reachedId)}
@@ -2295,8 +2333,8 @@ export default function BilliardsTracker() {
                   )}
                   {isPoints && (
                     <div style={{ marginTop: "10px" }}>
-                      <p style={styles.hint}>Номинал забитого шара (очки = номер шара):</p>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginTop: "6px" }}>
+                      <p style={styles.hint}>Номинал забитого шара (очки = номер шара)</p>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "6px", marginTop: "8px" }}>
                         {Array.from({ length: 15 }, (_, i) => i + 1).map((v) => (
                           <button
                             key={v}
@@ -2306,8 +2344,11 @@ export default function BilliardsTracker() {
                             }}
                             style={{
                               ...styles.selectChip,
-                              padding: "5px 9px",
-                              fontSize: "12px",
+                              borderRadius: "10px",
+                              padding: "11px 0",
+                              textAlign: "center",
+                              fontSize: "14px",
+                              fontWeight: 700,
                               ...(ballValue === v ? styles.selectChipActive : {}),
                             }}
                           >
@@ -2655,7 +2696,7 @@ export default function BilliardsTracker() {
                             <span key={pid}>
                               <span style={pid === m.winnerId ? styles.winnerName : undefined}>
                                 {nameById(pid)} {m.scores ? `(${m.scores[pid] || 0})` : ""}
-                                {pid === m.breakerId ? " 🎯" : ""}
+                                {pid === m.breakerId ? <IconTarget size={11} /> : ""}
                               </span>
                               {i < m.participants.length - 1 ? " · " : ""}
                             </span>
@@ -2864,8 +2905,8 @@ export default function BilliardsTracker() {
                     <div key={pid} style={styles.modalRow}>
                       <span>
                         {nameById(pid)}
-                        {pid === selectedMatch.breakerId ? " 🎯" : ""}
-                        {pid === selectedMatch.winnerId ? " 🏆" : ""}
+                        {pid === selectedMatch.breakerId ? <IconTarget size={12} /> : ""}
+                        {pid === selectedMatch.winnerId ? <IconTrophy size={12} /> : ""}
                       </span>
                       <span style={styles.mono}>{(selectedMatch.scores && selectedMatch.scores[pid]) || 0}</span>
                     </div>
@@ -2930,8 +2971,12 @@ export default function BilliardsTracker() {
           }}
         >
           <div style={{ maxWidth: "380px", width: "100%" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ fontSize: "60px", lineHeight: 1, filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.35))" }}>
-              {victory.solo ? "🎯" : "🏆"}
+            <div style={{ lineHeight: 1, filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.35))" }}>
+              {victory.solo ? (
+                <IconTarget size={60} color="#F8F1DE" />
+              ) : (
+                <IconTrophy size={60} color="#F8F1DE" />
+              )}
             </div>
             <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: "26px", margin: "10px 0 4px", color: "#F8F1DE", textShadow: "0 2px 8px rgba(0,0,0,0.4)" }}>
               {victory.solo
@@ -2981,9 +3026,10 @@ export default function BilliardsTracker() {
             )}
             {victory.bracket && (
               <div style={{ ...styles.breakerBanner, marginTop: "10px", borderColor: victory.bracket.isFinal ? "#3E9B5C" : undefined }}>
+                <IconTrophy />{" "}
                 {victory.bracket.isFinal
-                  ? `🏆 ${nameById(victory.bracket.champion)} — чемпион турнира!`
-                  : `🏆 ${nameById(victory.winnerId)} проходит в следующий раунд турнира`}
+                  ? `${nameById(victory.bracket.champion)} — чемпион турнира!`
+                  : `${nameById(victory.winnerId)} проходит в следующий раунд турнира`}
               </div>
             )}
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "16px" }}>
