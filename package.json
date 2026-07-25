@@ -1,0 +1,22 @@
+{
+  "name": "tvoy-billiard",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Твой бильярд — учёт партий, счёта и статистики для русского бильярда и пула. Оптимизировано под Telegram Mini App.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.12.7",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.8"
+  }
+}
