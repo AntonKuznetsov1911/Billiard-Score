@@ -139,6 +139,21 @@ const RUSSIAN_MODES = {
       "Самая сложная разновидность русского бильярда.",
     ],
   },
+  kolhoz: {
+    name: "Колхоз",
+    alias: "Колхоз",
+    target: null,
+    unit: "очков",
+    minPlayers: 3,
+    rules: [
+      "Коллективная игра для 3 и более игроков — по итогу партии каждый рассчитывается с каждым.",
+      "Забитый шар не выбывает из игры: очки записываются игроку, шар возвращается на стол.",
+      "Отмечайте номинал забитого шара для того, кто его закатил.",
+      "Точные номиналы шаров и штрафы отличаются от клуба к клубу — начните с любых значений и подстройте под свои правила игры.",
+      "Партия завершается вручную, когда компания решает закончить, а не по достижении цели.",
+      "По итогу партии для каждой пары игроков считается разница очков — это и есть результат между ними.",
+    ],
+  },
 };
 
 function CueExclamation({ height = 34 }) {
@@ -307,6 +322,71 @@ function PlayerBall({ color, size = 14 }) {
       <circle cx="8" cy="8" r="7" fill={color} stroke="#00000033" strokeWidth="0.6" />
       <circle cx="5.6" cy="5.6" r="2" fill="#ffffff88" />
     </svg>
+  );
+}
+
+function buildKolhozSettlement(participants, scores) {
+  const matrix = {};
+  participants.forEach((a) => {
+    matrix[a] = {};
+    participants.forEach((b) => {
+      if (a === b) return;
+      matrix[a][b] = (scores[a] || 0) - (scores[b] || 0);
+    });
+  });
+  return matrix;
+}
+
+const kolhozCellStyle = {
+  border: "1px solid rgba(139,90,52,0.35)",
+  padding: "6px 9px",
+  textAlign: "center",
+  whiteSpace: "nowrap",
+  fontSize: "12px",
+};
+
+function KolhozTable({ participants, settlement, nameById, playerColor }) {
+  if (!settlement) return null;
+  return (
+    <div style={{ overflowX: "auto", marginTop: "10px" }}>
+      <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <thead>
+          <tr>
+            <th style={kolhozCellStyle} />
+            {participants.map((pid) => (
+              <th key={pid} style={kolhozCellStyle}>
+                <PlayerBall color={playerColor(pid)} size={10} /> {nameById(pid)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {participants.map((a) => (
+            <tr key={a}>
+              <th style={kolhozCellStyle}>
+                <PlayerBall color={playerColor(a)} size={10} /> {nameById(a)}
+              </th>
+              {participants.map((b) => {
+                if (a === b) return <td key={b} style={kolhozCellStyle}>—</td>;
+                const v = (settlement[a] && settlement[a][b]) || 0;
+                return (
+                  <td
+                    key={b}
+                    style={{
+                      ...kolhozCellStyle,
+                      fontWeight: 700,
+                      color: v > 0 ? "#3E9B5C" : v < 0 ? "#B5473A" : undefined,
+                    }}
+                  >
+                    {v > 0 ? `+${v}` : v}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -1222,6 +1302,8 @@ export default function BilliardsTracker() {
       nextSeries = champion ? null : { ...s, wins };
     }
 
+    const settlement = g.mode === "kolhoz" && !solo ? buildKolhozSettlement(g.participants, g.scores) : null;
+
     const match = {
       id: uid(),
       date: new Date().toISOString(),
@@ -1234,6 +1316,7 @@ export default function BilliardsTracker() {
       mode: g.mode || null,
       solo,
       seriesId: sameSet ? s.id : null,
+      settlement,
     };
     updateData((prev) => ({ ...prev, matches: [...prev.matches, match], activeGame: null, activeSeries: nextSeries }));
     setTieCandidates(null);
@@ -1249,6 +1332,7 @@ export default function BilliardsTracker() {
       mode: g.mode || null,
       gameType: g.gameType || "russian",
       series: seriesInfo,
+      settlement,
     });
     haptic("success");
     setCelebrate(true);
@@ -1542,6 +1626,7 @@ export default function BilliardsTracker() {
   const activeGame = data.activeGame;
   const dark = data.theme === "dark";
   const styles = makeStyles(dark);
+  const isKolhoz = (data.gameType || "russian") === "russian" && (data.russianMode || "free") === "kolhoz";
 
   return (
     <div>
@@ -1705,10 +1790,15 @@ export default function BilliardsTracker() {
                         ))}
                       </div>
                       <p style={styles.hint}>
-                        {RUSSIAN_MODES[data.russianMode || "free"].name} · до{" "}
-                        {RUSSIAN_MODES[data.russianMode || "free"].target}{" "}
-                        {RUSSIAN_MODES[data.russianMode || "free"].unit}
+                        {RUSSIAN_MODES[data.russianMode || "free"].target
+                          ? `${RUSSIAN_MODES[data.russianMode || "free"].name} · до ${
+                              RUSSIAN_MODES[data.russianMode || "free"].target
+                            } ${RUSSIAN_MODES[data.russianMode || "free"].unit}`
+                          : `${RUSSIAN_MODES[data.russianMode || "free"].name} · играют все против всех, круговой расчёт очков в конце`}
                       </p>
+                      {isKolhoz && selected.length > 0 && selected.length < 3 && (
+                        <p style={{ ...styles.hint, color: COLORS.danger }}>Нужно минимум 3 игрока</p>
+                      )}
                     </div>
                   )}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
@@ -1796,7 +1886,7 @@ export default function BilliardsTracker() {
                     </div>
                   )}
 
-                  {!data.activeSeries && selected.length >= 2 && (
+                  {!isKolhoz && !data.activeSeries && selected.length >= 2 && (
                     <div style={styles.diceSection}>
                       <p style={styles.hint}>Формат</p>
                       <div style={styles.chipRow}>
@@ -1824,7 +1914,8 @@ export default function BilliardsTracker() {
                     </div>
                   )}
 
-                  {(data.gameType || "russian") === "russian" &&
+                  {!isKolhoz &&
+                    (data.gameType || "russian") === "russian" &&
                     selected.length >= 2 &&
                     RUSSIAN_MODES[data.russianMode || "free"] && (
                       <div style={styles.diceSection}>
@@ -1862,7 +1953,7 @@ export default function BilliardsTracker() {
 
                   <button
                     style={{ ...styles.brassBtn, marginTop: "16px", width: "100%" }}
-                    disabled={selected.length < 1}
+                    disabled={selected.length < 1 || (isKolhoz && selected.length < 3)}
                     onClick={startGame}
                   >
                     {selected.length === 1 ? "Начать тренировку (соло)" : "Начать партию"}
@@ -1877,9 +1968,10 @@ export default function BilliardsTracker() {
                 const gm = activeGame.mode ? RUSSIAN_MODES[activeGame.mode] : null;
                 const isPoints = gm && gm.unit === "очков";
                 const targetOf = (pid) => (activeGame.targets && activeGame.targets[pid]) || (gm ? gm.target : 0);
-                const reachedId = gm
-                  ? activeGame.participants.find((pid) => (activeGame.scores[pid] || 0) >= targetOf(pid))
-                  : null;
+                const reachedId =
+                  gm && gm.target
+                    ? activeGame.participants.find((pid) => (activeGame.scores[pid] || 0) >= targetOf(pid))
+                    : null;
                 return (
                 <div style={styles.card}>
                   <div style={styles.liveHeader}>
@@ -1888,7 +1980,8 @@ export default function BilliardsTracker() {
                   </div>
                   {gm && (
                     <p style={styles.hint}>
-                      {gm.name} ({gm.alias}) · до {gm.target} {gm.unit}
+                      {gm.name} ({gm.alias})
+                      {gm.target ? ` · до ${gm.target} ${gm.unit}` : " · круговой расчёт, завершите вручную, когда закончите"}
                     </p>
                   )}
                   {activeGame.breakerId && (
@@ -1939,9 +2032,9 @@ export default function BilliardsTracker() {
                       <div key={pid} style={{ ...styles.scoreCard, borderLeft: `4px solid ${playerColor(pid)}` }}>
                         <div style={styles.scoreName}>
                           <PlayerBall color={playerColor(pid)} /> {nameById(pid)}
-                          {gm && (
+                          {gm && targetOf(pid) ? (
                             <span style={{ opacity: 0.6, fontSize: "11px", fontWeight: 500 }}> · до {targetOf(pid)}</span>
-                          )}
+                          ) : null}
                         </div>
                         <span
                           key={scorePulse.pid === pid ? scorePulse.ts : "s"}
@@ -2475,6 +2568,17 @@ export default function BilliardsTracker() {
                 : ""}
             </p>
             <p style={styles.hint}>Продолжительность: {formatDuration(selectedMatch.durationMs)}</p>
+            {selectedMatch.settlement && (
+              <>
+                <p style={styles.hint}>Круговой расчёт (разница очков между парами):</p>
+                <KolhozTable
+                  participants={selectedMatch.participants}
+                  settlement={selectedMatch.settlement}
+                  nameById={nameById}
+                  playerColor={playerColor}
+                />
+              </>
+            )}
             <button style={{ ...styles.cancelBtn, marginTop: "16px" }} onClick={() => setSelectedMatchId(null)}>
               Закрыть
             </button>
@@ -2540,6 +2644,17 @@ export default function BilliardsTracker() {
                     .join(" : ")}
                 </strong>
                 {victory.series.champion && <div style={{ marginTop: "4px" }}>Матч завершён — чемпион определён!</div>}
+              </div>
+            )}
+            {victory.settlement && (
+              <div style={{ ...styles.breakerBanner, marginTop: "10px", textAlign: "left" }}>
+                🧮 Круговой расчёт (разница очков между парами)
+                <KolhozTable
+                  participants={victory.participants}
+                  settlement={victory.settlement}
+                  nameById={nameById}
+                  playerColor={playerColor}
+                />
               </div>
             )}
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "16px" }}>
