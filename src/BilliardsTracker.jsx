@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LabelList, ResponsiveContainer } from "recharts";
-import * as XLSX from "xlsx";
+import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from "react";
+import { saveToCloud, loadFromCloud, cloudSyncAvailable } from "./cloudSync.js";
+
+const RatingChart = lazy(() => import("./RatingChart.jsx"));
 
 const STORAGE_KEY = "billiards-club-data";
 
@@ -325,6 +326,31 @@ function PlayerBall({ color, size = 14 }) {
   );
 }
 
+function buildBracketRounds(participants) {
+  const rounds = [];
+  const firstRound = [];
+  for (let i = 0; i < participants.length; i += 2) {
+    firstRound.push({ a: participants[i], b: participants[i + 1], winnerId: null });
+  }
+  rounds.push(firstRound);
+  let roundSize = firstRound.length;
+  while (roundSize > 1) {
+    const nextRound = [];
+    for (let i = 0; i < roundSize / 2; i++) nextRound.push({ a: null, b: null, winnerId: null });
+    rounds.push(nextRound);
+    roundSize = nextRound.length;
+  }
+  return rounds;
+}
+
+function bracketRoundLabel(ri, total) {
+  const fromEnd = total - 1 - ri;
+  if (fromEnd === 0) return "Финал";
+  if (fromEnd === 1) return "Полуфинал";
+  if (fromEnd === 2) return "Четвертьфинал";
+  return `Раунд ${ri + 1}`;
+}
+
 function buildKolhozSettlement(participants, scores) {
   const matrix = {};
   participants.forEach((a) => {
@@ -386,32 +412,6 @@ function KolhozTable({ participants, settlement, nameById, playerColor }) {
           ))}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-function ChartTooltip({ active, payload, label, dark }) {
-  if (!active || !payload || !payload.length) return null;
-  return (
-    <div
-      style={{
-        background: dark ? "rgba(24,26,21,0.96)" : "rgba(255,253,248,0.97)",
-        border: `1px solid ${dark ? "rgba(255,255,255,0.14)" : "#E3D8BC"}`,
-        borderRadius: "10px",
-        padding: "8px 12px",
-        fontSize: "12px",
-        fontFamily: "'Inter', sans-serif",
-        color: dark ? "#F1EAD8" : "#1B1712",
-        boxShadow: "0 4px 14px rgba(0,0,0,0.3)",
-      }}
-    >
-      <div style={{ fontWeight: 700, marginBottom: "4px" }}>{label}</div>
-      {payload.map((p) => (
-        <div key={p.dataKey} style={{ color: p.color, fontWeight: 600 }}>
-          {p.name}: {p.value}
-          {String(p.dataKey).includes("%") ? "%" : ""}
-        </div>
-      ))}
     </div>
   );
 }
@@ -705,7 +705,34 @@ function uid() {
 }
 
 function loadInitial() {
-  return { players: [], matches: [], activeGame: null, activeSeries: null, theme: "dark", gameType: "russian", russianMode: "free" };
+  return {
+    players: [],
+    matches: [],
+    activeGame: null,
+    activeSeries: null,
+    activeBracket: null,
+    theme: "dark",
+    gameType: "russian",
+    russianMode: "free",
+    updatedAt: 0,
+  };
+}
+
+function normalizeData(parsed) {
+  return {
+    players: (Array.isArray(parsed.players) ? parsed.players : []).map((p, i) => ({
+      ...p,
+      color: p.color || AVATAR_COLORS[i % AVATAR_COLORS.length],
+    })),
+    matches: Array.isArray(parsed.matches) ? parsed.matches : [],
+    activeGame: parsed.activeGame || null,
+    activeSeries: parsed.activeSeries || null,
+    activeBracket: parsed.activeBracket || null,
+    theme: parsed.theme === "light" ? "light" : "dark",
+    gameType: parsed.gameType === "pool" ? "pool" : "russian",
+    russianMode: RUSSIAN_MODES[parsed.russianMode] ? parsed.russianMode : "free",
+    updatedAt: parsed.updatedAt || 0,
+  };
 }
 
 function formatDuration(ms) {
@@ -983,12 +1010,17 @@ export default function BilliardsTracker() {
   const [dateFilter, setDateFilter] = useState("");
   const [celebrate, setCelebrate] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [openRuleKey, setOpenRuleKey] = useState(null);
   const [ballValue, setBallValue] = useState(5);
   const [handicaps, setHandicaps] = useState({});
   const [h2h, setH2h] = useState({ a: "", b: "" });
   const [victory, setVictory] = useState(null);
   const [seriesPick, setSeriesPick] = useState(1);
   const [scorePulse, setScorePulse] = useState({ pid: null, ts: 0 });
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [gameMode, setGameMode] = useState(false);
+  const [editMatchId, setEditMatchId] = useState(null);
+  const [editDraft, setEditDraft] = useState(null);
 
   useEffect(() => {
     const tg = getTG();
@@ -1005,28 +1037,36 @@ export default function BilliardsTracker() {
 
   useEffect(() => {
     (async () => {
+      let local = null;
       try {
         const res = await window.storage.get(STORAGE_KEY, false);
-        if (res && res.value) {
-          const parsed = JSON.parse(res.value);
-          setData({
-            players: (Array.isArray(parsed.players) ? parsed.players : []).map((p, i) => ({
-              ...p,
-              color: p.color || AVATAR_COLORS[i % AVATAR_COLORS.length],
-            })),
-            matches: Array.isArray(parsed.matches) ? parsed.matches : [],
-            activeGame: parsed.activeGame || null,
-            activeSeries: parsed.activeSeries || null,
-            theme: parsed.theme === "light" ? "light" : "dark",
-            gameType: parsed.gameType === "pool" ? "pool" : "russian",
-            russianMode: RUSSIAN_MODES[parsed.russianMode] ? parsed.russianMode : "free",
-          });
-        }
+        if (res && res.value) local = normalizeData(JSON.parse(res.value));
       } catch (e) {
-        // no data yet
-      } finally {
-        setLoaded(true);
+        // no local data yet
       }
+
+      let cloud = null;
+      try {
+        const cloudRes = await loadFromCloud();
+        if (cloudRes && cloudRes.data) cloud = normalizeData({ ...cloudRes.data, updatedAt: cloudRes.updatedAt });
+      } catch (e) {
+        // cloud unavailable or empty
+      }
+
+      const cloudIsNewer = cloud && (!local || (cloud.updatedAt || 0) > (local.updatedAt || 0));
+      const chosen = cloudIsNewer ? cloud : local;
+
+      if (chosen) {
+        setData(chosen);
+        if (cloudIsNewer) {
+          try {
+            await window.storage.set(STORAGE_KEY, JSON.stringify(chosen), false);
+          } catch (e) {
+            // best effort
+          }
+        }
+      }
+      setLoaded(true);
     })();
   }, []);
 
@@ -1073,12 +1113,15 @@ export default function BilliardsTracker() {
     } catch (e) {
       console.error("Storage error", e);
     }
+    // Best-effort mirror to Telegram CloudStorage; silently no-ops outside Telegram.
+    saveToCloud(next).catch(() => {});
   }, []);
 
   const updateData = useCallback(
     (updater) => {
       setData((prev) => {
-        const next = typeof updater === "function" ? updater(prev) : updater;
+        const next0 = typeof updater === "function" ? updater(prev) : updater;
+        const next = { ...next0, updatedAt: Date.now() };
         persist(next);
         return next;
       });
@@ -1235,6 +1278,55 @@ export default function BilliardsTracker() {
     setSeriesPick(1);
   };
 
+  const startTournament = () => {
+    if (selected.length !== 4 && selected.length !== 8) return;
+    haptic("medium");
+    updateData((prev) => ({
+      ...prev,
+      activeBracket: {
+        id: uid(),
+        participants: [...selected],
+        rounds: buildBracketRounds(selected),
+        champion: null,
+      },
+    }));
+    setSelected([]);
+    setDiceRolls(null);
+  };
+
+  const startBracketMatch = (roundIdx, matchIdx) => {
+    const bracket = data.activeBracket;
+    if (!bracket) return;
+    const m = bracket.rounds[roundIdx] && bracket.rounds[roundIdx][matchIdx];
+    if (!m || !m.a || !m.b || m.winnerId) return;
+    haptic("medium");
+    updateData((prev) => {
+      const mode = (prev.gameType || "russian") === "russian" ? prev.russianMode || "free" : null;
+      return {
+        ...prev,
+        activeGame: {
+          id: uid(),
+          participants: [m.a, m.b],
+          scores: { [m.a]: 0, [m.b]: 0 },
+          breakerId: null,
+          gameType: prev.gameType || "russian",
+          mode,
+          targets: buildTargets(mode, [m.a, m.b]),
+          actionLog: [],
+          startedAt: new Date().toISOString(),
+          bracketRound: roundIdx,
+          bracketMatch: matchIdx,
+        },
+      };
+    });
+  };
+
+  const cancelBracket = () => {
+    if (!window.confirm("Завершить турнир досрочно?")) return;
+    haptic("warning");
+    updateData((prev) => ({ ...prev, activeBracket: null }));
+  };
+
   const addPoint = (playerId, delta) => {
     haptic("light");
     setScorePulse({ pid: playerId, ts: Date.now() });
@@ -1304,6 +1396,26 @@ export default function BilliardsTracker() {
 
     const settlement = g.mode === "kolhoz" && !solo ? buildKolhozSettlement(g.participants, g.scores) : null;
 
+    // Tournament bracket advance
+    let bracketUpdate = null;
+    let bracketInfo = null;
+    if (g.bracketRound != null && g.bracketMatch != null && data.activeBracket) {
+      const bracket = data.activeBracket;
+      const rounds = bracket.rounds.map((r) => r.map((mm) => ({ ...mm })));
+      rounds[g.bracketRound][g.bracketMatch].winnerId = winnerId;
+      let champion = bracket.champion;
+      const isFinal = g.bracketRound + 1 >= rounds.length;
+      if (!isFinal) {
+        const nextIdx = Math.floor(g.bracketMatch / 2);
+        const slot = g.bracketMatch % 2 === 0 ? "a" : "b";
+        rounds[g.bracketRound + 1][nextIdx][slot] = winnerId;
+      } else {
+        champion = winnerId;
+      }
+      bracketUpdate = { ...bracket, rounds, champion };
+      bracketInfo = { isFinal, champion: isFinal ? winnerId : null };
+    }
+
     const match = {
       id: uid(),
       date: new Date().toISOString(),
@@ -1317,8 +1429,15 @@ export default function BilliardsTracker() {
       solo,
       seriesId: sameSet ? s.id : null,
       settlement,
+      bracketId: bracketUpdate ? bracketUpdate.id : null,
     };
-    updateData((prev) => ({ ...prev, matches: [...prev.matches, match], activeGame: null, activeSeries: nextSeries }));
+    updateData((prev) => ({
+      ...prev,
+      matches: [...prev.matches, match],
+      activeGame: null,
+      activeSeries: nextSeries,
+      activeBracket: bracketUpdate || prev.activeBracket,
+    }));
     setTieCandidates(null);
     setSelected([]);
     setDiceRolls(null);
@@ -1333,6 +1452,7 @@ export default function BilliardsTracker() {
       gameType: g.gameType || "russian",
       series: seriesInfo,
       settlement,
+      bracket: bracketInfo,
     });
     haptic("success");
     setCelebrate(true);
@@ -1340,8 +1460,8 @@ export default function BilliardsTracker() {
   };
 
   const closeVictory = () => {
+    setTab(victory && victory.bracket ? "play" : "rating");
     setVictory(null);
-    setTab("rating");
   };
 
   const shareVictory = async () => {
@@ -1410,10 +1530,66 @@ export default function BilliardsTracker() {
     setSelectedMatchId((cur) => (cur === id ? null : cur));
   };
 
+  const startEditMatch = (m) => {
+    haptic("light");
+    const scores = {};
+    m.participants.forEach((pid) => {
+      scores[pid] = (m.scores && m.scores[pid]) || 0;
+    });
+    setEditDraft({ scores });
+    setEditMatchId(m.id);
+  };
+
+  const cancelEditMatch = () => {
+    setEditMatchId(null);
+    setEditDraft(null);
+  };
+
+  const saveEditMatch = () => {
+    if (!editMatchId || !editDraft) return;
+    haptic("medium");
+    updateData((prev) => {
+      const idx = prev.matches.findIndex((m) => m.id === editMatchId);
+      if (idx === -1) return prev;
+      const old = prev.matches[idx];
+      const newScores = editDraft.scores;
+      let winnerId = old.winnerId;
+      if (!old.solo) {
+        const max = Math.max(...old.participants.map((pid) => newScores[pid] || 0));
+        const leaders = old.participants.filter((pid) => (newScores[pid] || 0) === max);
+        winnerId = leaders.includes(old.winnerId) ? old.winnerId : leaders[0];
+      }
+      const settlement = old.mode === "kolhoz" && !old.solo ? buildKolhozSettlement(old.participants, newScores) : old.settlement;
+      const matches = [...prev.matches];
+      matches[idx] = { ...old, scores: newScores, winnerId, settlement };
+
+      let activeSeries = prev.activeSeries;
+      if (old.seriesId && activeSeries && activeSeries.id === old.seriesId && winnerId !== old.winnerId) {
+        const wins = { ...activeSeries.wins };
+        wins[old.winnerId] = Math.max(0, (wins[old.winnerId] || 0) - 1);
+        wins[winnerId] = (wins[winnerId] || 0) + 1;
+        activeSeries = { ...activeSeries, wins };
+      }
+
+      return { ...prev, matches, activeSeries };
+    });
+    setEditMatchId(null);
+    setEditDraft(null);
+  };
+
   const clearAll = () => {
     if (!window.confirm("Удалить всех игроков и всю историю партий?")) return;
     haptic("warning");
-    updateData((prev) => ({ players: [], matches: [], activeGame: null, activeSeries: null, theme: prev.theme, gameType: prev.gameType, russianMode: prev.russianMode }));
+    updateData((prev) => ({
+      players: [],
+      matches: [],
+      activeGame: null,
+      activeSeries: null,
+      activeBracket: null,
+      theme: prev.theme,
+      gameType: prev.gameType,
+      russianMode: prev.russianMode,
+    }));
     setSelected([]);
     setTieCandidates(null);
     setDiceRolls(null);
@@ -1546,7 +1722,8 @@ export default function BilliardsTracker() {
     [data.matches, selectedMatchId]
   );
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
+    const XLSX = await import("xlsx");
     const rows = sortedHistory.map((m) => ({
       Дата: new Date(m.date).toLocaleDateString("ru-RU"),
       Время: new Date(m.date).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
@@ -1627,6 +1804,7 @@ export default function BilliardsTracker() {
   const dark = data.theme === "dark";
   const styles = makeStyles(dark);
   const isKolhoz = (data.gameType || "russian") === "russian" && (data.russianMode || "free") === "kolhoz";
+  const immersive = !!(activeGame && gameMode);
 
   return (
     <div>
@@ -1714,19 +1892,21 @@ export default function BilliardsTracker() {
       </div>
 
       <div style={styles.page}>
-        <header style={styles.header} className="no-print">
-          <h1 style={styles.title}>
-            Твой бильярд
-            <CueExclamation height={30} />
-          </h1>
-          <button
-            style={styles.gameTypeBadge}
-            onClick={() => setGameType((data.gameType || "russian") === "pool" ? "russian" : "pool")}
-            aria-label="Переключить дисциплину"
-          >
-            <GameIcon type={data.gameType || "russian"} /> {GAME_TYPES[data.gameType || "russian"].label}
-          </button>
-        </header>
+        {!immersive && (
+          <header style={styles.header} className="no-print">
+            <h1 style={styles.title}>
+              Твой бильярд
+              <CueExclamation height={30} />
+            </h1>
+            <button
+              style={styles.gameTypeBadge}
+              onClick={() => setGameType((data.gameType || "russian") === "pool" ? "russian" : "pool")}
+              aria-label="Переключить дисциплину"
+            >
+              <GameIcon type={data.gameType || "russian"} /> {GAME_TYPES[data.gameType || "russian"].label}
+            </button>
+          </header>
+        )}
 
         <main style={styles.main} key={tab} className="tab-fade">
           {tab === "play" && (
@@ -1764,14 +1944,20 @@ export default function BilliardsTracker() {
                 </div>
               )}
 
-              {!activeGame && (
+              {!activeGame && !data.activeBracket && (
                 <div style={styles.card}>
                   <h2 style={styles.h2}>Начать партию</h2>
                   {(data.gameType || "russian") === "russian" && (
                     <div style={{ marginBottom: "12px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
                         <p style={styles.hint}>Дисциплина</p>
-                        <button style={styles.diceBtn} onClick={() => setRulesOpen(true)}>
+                        <button
+                          style={styles.diceBtn}
+                          onClick={() => {
+                            setOpenRuleKey(data.russianMode || "free");
+                            setRulesOpen(true);
+                          }}
+                        >
                           📖 Правила
                         </button>
                       </div>
@@ -1823,6 +2009,12 @@ export default function BilliardsTracker() {
                       </button>
                     ))}
                   </div>
+
+                  {!isKolhoz && (selected.length === 4 || selected.length === 8) && (
+                    <button style={{ ...styles.diceBtn, marginTop: "10px", width: "100%" }} onClick={startTournament}>
+                      🏆 Турнир на выбывание ({selected.length} участника{selected.length === 4 ? "" : "ов"})
+                    </button>
+                  )}
 
                   {selected.length >= 2 && (
                     <div style={styles.diceSection}>
@@ -1886,7 +2078,16 @@ export default function BilliardsTracker() {
                     </div>
                   )}
 
-                  {!isKolhoz && !data.activeSeries && selected.length >= 2 && (
+                  {!isKolhoz && selected.length >= 2 && (
+                    <button
+                      style={{ ...styles.diceBtn, marginTop: "10px" }}
+                      onClick={() => setAdvancedOpen((o) => !o)}
+                    >
+                      {advancedOpen ? "▲ Скрыть доп. настройки" : "▾ Формат и фора"}
+                    </button>
+                  )}
+
+                  {!isKolhoz && advancedOpen && !data.activeSeries && selected.length >= 2 && (
                     <div style={styles.diceSection}>
                       <p style={styles.hint}>Формат</p>
                       <div style={styles.chipRow}>
@@ -1915,6 +2116,7 @@ export default function BilliardsTracker() {
                   )}
 
                   {!isKolhoz &&
+                    advancedOpen &&
                     (data.gameType || "russian") === "russian" &&
                     selected.length >= 2 &&
                     RUSSIAN_MODES[data.russianMode || "free"] && (
@@ -1964,6 +2166,57 @@ export default function BilliardsTracker() {
                 </div>
               )}
 
+              {!activeGame && data.activeBracket && (
+                <div style={styles.card}>
+                  <h2 style={styles.h2}>🏆 Турнир на выбывание</h2>
+                  {data.activeBracket.champion && (
+                    <div style={{ ...styles.breakerBanner, borderColor: "#3E9B5C" }}>
+                      🏆 Чемпион турнира: <strong>{nameById(data.activeBracket.champion)}</strong>
+                    </div>
+                  )}
+                  {data.activeBracket.rounds.map((round, ri) => (
+                    <div key={ri} style={{ marginTop: "14px" }}>
+                      <p style={styles.hint}>{bracketRoundLabel(ri, data.activeBracket.rounds.length)}</p>
+                      {round.map((m, mi) => (
+                        <div
+                          key={mi}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "8px",
+                            padding: "10px 12px",
+                            borderRadius: "10px",
+                            background: "rgba(255,255,255,0.05)",
+                            marginBottom: "6px",
+                          }}
+                        >
+                          <span style={{ fontSize: "13px" }}>
+                            <span style={{ fontWeight: m.winnerId && m.winnerId === m.a ? 700 : 400 }}>
+                              {m.a ? nameById(m.a) : "?"}
+                              {m.winnerId && m.winnerId === m.a ? " 🏆" : ""}
+                            </span>
+                            {" vs "}
+                            <span style={{ fontWeight: m.winnerId && m.winnerId === m.b ? 700 : 400 }}>
+                              {m.b ? nameById(m.b) : "?"}
+                              {m.winnerId && m.winnerId === m.b ? " 🏆" : ""}
+                            </span>
+                          </span>
+                          {m.a && m.b && !m.winnerId && (
+                            <button style={styles.diceBtn} onClick={() => startBracketMatch(ri, mi)}>
+                              Играть
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                  <button style={{ ...styles.cancelBtn, marginTop: "12px", width: "100%" }} onClick={cancelBracket}>
+                    Завершить турнир
+                  </button>
+                </div>
+              )}
+
               {activeGame && !tieCandidates && (() => {
                 const gm = activeGame.mode ? RUSSIAN_MODES[activeGame.mode] : null;
                 const isPoints = gm && gm.unit === "очков";
@@ -1976,15 +2229,22 @@ export default function BilliardsTracker() {
                 <div style={styles.card}>
                   <div style={styles.liveHeader}>
                     <span style={styles.liveDot} />
-                    <h2 style={{ ...styles.h2, margin: 0 }}>Партия идёт</h2>
+                    <h2 style={{ ...styles.h2, margin: 0, flex: 1 }}>Партия идёт</h2>
+                    <button
+                      style={{ ...styles.diceBtn, padding: "6px 10px", fontSize: "11px" }}
+                      onClick={() => setGameMode((v) => !v)}
+                      className="no-print"
+                    >
+                      {gameMode ? "▣ Обычный вид" : "⛶ Крупный режим"}
+                    </button>
                   </div>
-                  {gm && (
+                  {!gameMode && gm && (
                     <p style={styles.hint}>
                       {gm.name} ({gm.alias})
                       {gm.target ? ` · до ${gm.target} ${gm.unit}` : " · круговой расчёт, завершите вручную, когда закончите"}
                     </p>
                   )}
-                  {activeGame.breakerId && (
+                  {!gameMode && activeGame.breakerId && (
                     <div style={styles.breakerBanner}>
                       🎯 Первым разбивал: <strong>{nameById(activeGame.breakerId)}</strong>
                     </div>
@@ -2000,9 +2260,11 @@ export default function BilliardsTracker() {
                       </button>
                     </div>
                   )}
-                  <p style={styles.hint}>
-                    {isPoints ? "Отмечайте набранные очки каждого игрока" : "Отмечайте забитые шары каждого игрока"}
-                  </p>
+                  {!gameMode && (
+                    <p style={styles.hint}>
+                      {isPoints ? "Отмечайте набранные очки каждого игрока" : "Отмечайте забитые шары каждого игрока"}
+                    </p>
+                  )}
                   {isPoints && (
                     <div style={{ marginTop: "10px" }}>
                       <p style={styles.hint}>Номинал забитого шара (очки = номер шара):</p>
@@ -2027,11 +2289,21 @@ export default function BilliardsTracker() {
                       </div>
                     </div>
                   )}
-                  <div style={styles.scoreboard}>
+                  <div style={{ ...styles.scoreboard, ...(gameMode ? { gap: "14px", marginTop: "16px" } : {}) }}>
                     {activeGame.participants.map((pid) => (
-                      <div key={pid} style={{ ...styles.scoreCard, borderLeft: `4px solid ${playerColor(pid)}` }}>
-                        <div style={styles.scoreName}>
-                          <PlayerBall color={playerColor(pid)} /> {nameById(pid)}
+                      <div
+                        key={pid}
+                        style={{
+                          ...styles.scoreCard,
+                          borderLeft: `4px solid ${playerColor(pid)}`,
+                          ...(gameMode
+                            ? { padding: "22px 18px", cursor: "pointer", userSelect: "none", flexWrap: "wrap", rowGap: "12px" }
+                            : {}),
+                        }}
+                        onClick={gameMode ? () => addPoint(pid, isPoints ? ballValue : 1) : undefined}
+                      >
+                        <div style={{ ...styles.scoreName, ...(gameMode ? { fontSize: "18px", flexBasis: "100%" } : {}) }}>
+                          <PlayerBall color={playerColor(pid)} size={gameMode ? 18 : 14} /> {nameById(pid)}
                           {gm && targetOf(pid) ? (
                             <span style={{ opacity: 0.6, fontSize: "11px", fontWeight: 500 }}> · до {targetOf(pid)}</span>
                           ) : null}
@@ -2050,22 +2322,32 @@ export default function BilliardsTracker() {
                             value={activeGame.scores[pid] || 0}
                             onChange={(e) => setScore(pid, e.target.value)}
                             onFocus={(e) => e.target.select()}
-                            style={styles.scoreInput}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ ...styles.scoreInput, ...(gameMode ? { fontSize: "28px", width: "68px", height: "50px" } : {}) }}
                             aria-label={`Счёт: ${nameById(pid)}`}
                           />
                         </span>
                         <div style={styles.scoreBtns}>
                           <button
-                            style={styles.scoreBtnMinus}
-                            onClick={() => addPoint(pid, -1)}
+                            style={{ ...styles.scoreBtnMinus, ...(gameMode ? { width: "52px", height: "52px", fontSize: "24px" } : {}) }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addPoint(pid, -1);
+                            }}
                             disabled={(activeGame.scores[pid] || 0) <= 0}
                             aria-label={`Убрать у ${nameById(pid)}`}
                           >
                             −
                           </button>
                           <button
-                            style={styles.scoreBtnPlus}
-                            onClick={() => addPoint(pid, isPoints ? ballValue : 1)}
+                            style={{
+                              ...styles.scoreBtnPlus,
+                              ...(gameMode ? { height: "52px", fontSize: "17px", padding: "0 20px" } : {}),
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addPoint(pid, isPoints ? ballValue : 1);
+                            }}
                             aria-label={`Добавить: ${nameById(pid)}`}
                           >
                             {isPoints ? `+ ${ballValue}` : "+ шар"}
@@ -2074,6 +2356,11 @@ export default function BilliardsTracker() {
                       </div>
                     ))}
                   </div>
+                  {gameMode && (
+                    <p style={{ ...styles.hint, textAlign: "center", marginTop: "8px" }}>
+                      Тапните по карточке игрока, чтобы добавить {isPoints ? `${ballValue} очк.` : "шар"}
+                    </p>
+                  )}
                   <button
                     style={{ ...styles.diceBtn, marginTop: "12px", width: "100%" }}
                     disabled={!activeGame.actionLog || activeGame.actionLog.length === 0}
@@ -2119,60 +2406,9 @@ export default function BilliardsTracker() {
                 {stats.length === 0 ? (
                   <EmptyState text="Сыгранных партий пока нет" />
                 ) : (
-                  <div style={{ width: "100%", height: 250 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={chartData} margin={{ top: 14, right: 6, left: -22, bottom: 0 }} barGap={4}>
-                        <CartesianGrid vertical={false} stroke={dark ? "#ffffff14" : "#00000012"} />
-                        <XAxis
-                          dataKey="name"
-                          axisLine={false}
-                          tickLine={false}
-                          tick={{ fontSize: 11, fill: styles.hint.color, fontWeight: 600 }}
-                        />
-                        <YAxis
-                          yAxisId="left"
-                          allowDecimals={false}
-                          axisLine={false}
-                          tickLine={false}
-                          tick={{ fontSize: 10, fill: styles.hint.color }}
-                        />
-                        <YAxis yAxisId="right" orientation="right" domain={[0, 100]} hide />
-                        <Tooltip
-                          content={<ChartTooltip dark={dark} />}
-                          cursor={{ fill: dark ? "#ffffff0a" : "#00000008" }}
-                        />
-                        <Legend
-                          iconType="circle"
-                          iconSize={8}
-                          wrapperStyle={{ fontSize: "11px", fontWeight: 600, color: styles.hint.color }}
-                        />
-                        <Bar yAxisId="left" dataKey="Победы" fill="#2E8A63" radius={[5, 5, 0, 0]} maxBarSize={26}>
-                          <LabelList
-                            dataKey="Победы"
-                            position="top"
-                            style={{ fontSize: 10, fontWeight: 700, fill: styles.hint.color }}
-                          />
-                        </Bar>
-                        <Bar
-                          yAxisId="left"
-                          dataKey="Поражения"
-                          fill="#B5473A"
-                          fillOpacity={0.72}
-                          radius={[5, 5, 0, 0]}
-                          maxBarSize={26}
-                        />
-                        <Line
-                          yAxisId="right"
-                          type="monotone"
-                          dataKey="% побед"
-                          stroke="#C08A3E"
-                          strokeWidth={2.5}
-                          dot={{ r: 3.5, fill: "#C08A3E", strokeWidth: 0 }}
-                          activeDot={{ r: 5 }}
-                        />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
+                  <Suspense fallback={<div style={{ ...styles.hint, textAlign: "center", padding: "40px 0" }}>Загрузка графика…</div>}>
+                    <RatingChart chartData={chartData} dark={dark} hintColor={styles.hint.color} />
+                  </Suspense>
                 )}
               </div>
 
@@ -2476,6 +2712,11 @@ export default function BilliardsTracker() {
               <div style={styles.card}>
                 <h2 style={styles.h2}>Резервная копия</h2>
                 <p style={styles.hint}>Все партии сохраняются автоматически. Дополнительно можно скачать полную копию данных или восстановить её из файла.</p>
+                <p style={styles.hint}>
+                  {cloudSyncAvailable()
+                    ? "☁️ Синхронизация с Telegram Cloud включена — данные не потеряются при смене устройства."
+                    : "☁️ Синхронизация с Telegram Cloud недоступна вне Telegram — данные хранятся только на этом устройстве."}
+                </p>
                 <div style={styles.settingBtnRow}>
                   <button style={styles.brassBtn} onClick={exportBackup}>
                     Скачать копию
@@ -2497,42 +2738,51 @@ export default function BilliardsTracker() {
           )}
         </main>
 
-        <nav style={styles.bottomNav} className="no-print">
-          {[
-            ["play", "Игра", <NavCue size={20} />],
-            ["rating", "Рейтинг", <NavTrophy size={20} />],
-            ["history", "История", <NavClock size={20} />],
-            ["settings", "Ещё", <NavGear size={20} />],
-          ].map(([key, label, icon]) => (
-            <button
-              key={key}
-              onClick={() => {
-                haptic("light");
-                setTab(key);
-              }}
-              style={{
-                ...styles.bottomNavBtn,
-                ...(tab === key ? styles.bottomNavBtnActive : {}),
-              }}
-            >
-              <span
+        {!immersive && (
+          <nav style={styles.bottomNav} className="no-print">
+            {[
+              ["play", "Игра", <NavCue size={20} />],
+              ["rating", "Рейтинг", <NavTrophy size={20} />],
+              ["history", "История", <NavClock size={20} />],
+              ["settings", "Ещё", <NavGear size={20} />],
+            ].map(([key, label, icon]) => (
+              <button
+                key={key}
+                onClick={() => {
+                  haptic("light");
+                  setTab(key);
+                }}
                 style={{
-                  ...styles.navIcon,
-                  animation: tab === key ? "iconPop 0.35s ease" : "none",
+                  ...styles.bottomNavBtn,
+                  ...(tab === key ? styles.bottomNavBtnActive : {}),
                 }}
               >
-                {icon}
-              </span>
-              {label}
-            </button>
-          ))}
-        </nav>
+                <span
+                  style={{
+                    ...styles.navIcon,
+                    animation: tab === key ? "iconPop 0.35s ease" : "none",
+                  }}
+                >
+                  {icon}
+                </span>
+                {label}
+              </button>
+            ))}
+          </nav>
+        )}
       </div>
 
       <Confetti active={celebrate} />
 
       {selectedMatch && (
-        <div style={styles.modalOverlay} onClick={() => setSelectedMatchId(null)} className="no-print">
+        <div
+          style={styles.modalOverlay}
+          onClick={() => {
+            setSelectedMatchId(null);
+            cancelEditMatch();
+          }}
+          className="no-print"
+        >
           <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
             <h2 style={styles.h2}>
               Партия ·{" "}
@@ -2544,44 +2794,88 @@ export default function BilliardsTracker() {
                 minute: "2-digit",
               })}
             </h2>
-            <div style={styles.modalScores}>
-              {selectedMatch.participants.map((pid) => (
-                <div key={pid} style={styles.modalRow}>
-                  <span>
-                    {nameById(pid)}
-                    {pid === selectedMatch.breakerId ? " 🎯" : ""}
-                    {pid === selectedMatch.winnerId ? " 🏆" : ""}
-                  </span>
-                  <span style={styles.mono}>{(selectedMatch.scores && selectedMatch.scores[pid]) || 0}</span>
-                </div>
-              ))}
-            </div>
-            <p style={styles.hint}>Начинал: {selectedMatch.breakerId ? nameById(selectedMatch.breakerId) : "не указано"}</p>
-            <p style={styles.hint}>
-              {selectedMatch.solo ? "Тип: тренировка (соло)" : `Победитель: ${nameById(selectedMatch.winnerId)}`}
-            </p>
-            <p style={styles.hint}>
-              Дисциплина: <GameIcon type={selectedMatch.gameType || "russian"} size={13} />{" "}
-              {GAME_TYPES[selectedMatch.gameType || "russian"].label}
-              {selectedMatch.mode && RUSSIAN_MODES[selectedMatch.mode]
-                ? ` · ${RUSSIAN_MODES[selectedMatch.mode].name} (${RUSSIAN_MODES[selectedMatch.mode].alias})`
-                : ""}
-            </p>
-            <p style={styles.hint}>Продолжительность: {formatDuration(selectedMatch.durationMs)}</p>
-            {selectedMatch.settlement && (
+            {editMatchId === selectedMatch.id ? (
               <>
-                <p style={styles.hint}>Круговой расчёт (разница очков между парами):</p>
-                <KolhozTable
-                  participants={selectedMatch.participants}
-                  settlement={selectedMatch.settlement}
-                  nameById={nameById}
-                  playerColor={playerColor}
-                />
+                <div style={styles.modalScores}>
+                  {selectedMatch.participants.map((pid) => (
+                    <div key={pid} style={styles.modalRow}>
+                      <span>
+                        <PlayerBall color={playerColor(pid)} size={12} /> {nameById(pid)}
+                      </span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min="0"
+                        value={editDraft.scores[pid] ?? 0}
+                        onChange={(e) =>
+                          setEditDraft((d) => ({
+                            ...d,
+                            scores: { ...d.scores, [pid]: Math.max(0, Math.floor(Number(e.target.value) || 0)) },
+                          }))
+                        }
+                        onFocus={(e) => e.target.select()}
+                        style={{ ...styles.scoreInput, width: "76px" }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                {!selectedMatch.solo && <p style={styles.hint}>Победитель определится автоматически по наибольшему счёту.</p>}
+                <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+                  <button style={{ ...styles.brassBtn, flex: 1 }} onClick={saveEditMatch}>
+                    Сохранить
+                  </button>
+                  <button style={{ ...styles.cancelBtn, flex: 1 }} onClick={cancelEditMatch}>
+                    Отмена
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={styles.modalScores}>
+                  {selectedMatch.participants.map((pid) => (
+                    <div key={pid} style={styles.modalRow}>
+                      <span>
+                        {nameById(pid)}
+                        {pid === selectedMatch.breakerId ? " 🎯" : ""}
+                        {pid === selectedMatch.winnerId ? " 🏆" : ""}
+                      </span>
+                      <span style={styles.mono}>{(selectedMatch.scores && selectedMatch.scores[pid]) || 0}</span>
+                    </div>
+                  ))}
+                </div>
+                <p style={styles.hint}>Начинал: {selectedMatch.breakerId ? nameById(selectedMatch.breakerId) : "не указано"}</p>
+                <p style={styles.hint}>
+                  {selectedMatch.solo ? "Тип: тренировка (соло)" : `Победитель: ${nameById(selectedMatch.winnerId)}`}
+                </p>
+                <p style={styles.hint}>
+                  Дисциплина: <GameIcon type={selectedMatch.gameType || "russian"} size={13} />{" "}
+                  {GAME_TYPES[selectedMatch.gameType || "russian"].label}
+                  {selectedMatch.mode && RUSSIAN_MODES[selectedMatch.mode]
+                    ? ` · ${RUSSIAN_MODES[selectedMatch.mode].name} (${RUSSIAN_MODES[selectedMatch.mode].alias})`
+                    : ""}
+                </p>
+                <p style={styles.hint}>Продолжительность: {formatDuration(selectedMatch.durationMs)}</p>
+                {selectedMatch.settlement && (
+                  <>
+                    <p style={styles.hint}>Круговой расчёт (разница очков между парами):</p>
+                    <KolhozTable
+                      participants={selectedMatch.participants}
+                      settlement={selectedMatch.settlement}
+                      nameById={nameById}
+                      playerColor={playerColor}
+                    />
+                  </>
+                )}
+                <div style={{ display: "flex", gap: "8px", marginTop: "16px" }} className="no-print">
+                  <button style={{ ...styles.diceBtn, flex: 1 }} onClick={() => startEditMatch(selectedMatch)}>
+                    ✏️ Исправить счёт
+                  </button>
+                  <button style={{ ...styles.cancelBtn, flex: 1 }} onClick={() => setSelectedMatchId(null)}>
+                    Закрыть
+                  </button>
+                </div>
               </>
             )}
-            <button style={{ ...styles.cancelBtn, marginTop: "16px" }} onClick={() => setSelectedMatchId(null)}>
-              Закрыть
-            </button>
           </div>
         </div>
       )}
@@ -2657,8 +2951,15 @@ export default function BilliardsTracker() {
                 />
               </div>
             )}
+            {victory.bracket && (
+              <div style={{ ...styles.breakerBanner, marginTop: "10px", borderColor: victory.bracket.isFinal ? "#3E9B5C" : undefined }}>
+                {victory.bracket.isFinal
+                  ? `🏆 ${nameById(victory.bracket.champion)} — чемпион турнира!`
+                  : `🏆 ${nameById(victory.winnerId)} проходит в следующий раунд турнира`}
+              </div>
+            )}
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "16px" }}>
-              {(!victory.series || !victory.series.champion) && !victory.solo && (
+              {!victory.bracket && (!victory.series || !victory.series.champion) && !victory.solo && (
                 <button style={{ ...styles.brassBtn, width: "100%" }} onClick={() => startRematch(victory.participants)}>
                   🔄 Реванш{victory.series ? " (следующая партия матча)" : ""}
                 </button>
@@ -2672,7 +2973,7 @@ export default function BilliardsTracker() {
                 📤 Поделиться результатом
               </button>
               <button style={{ ...styles.finishBtn, width: "100%" }} onClick={closeVictory}>
-                К рейтингу
+                {victory.bracket ? "К турнирной сетке" : "К рейтингу"}
               </button>
             </div>
           </div>
@@ -2683,18 +2984,42 @@ export default function BilliardsTracker() {
         <div style={styles.modalOverlay} onClick={() => setRulesOpen(false)} className="no-print">
           <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
             <h2 style={styles.h2}>Дисциплины русского бильярда</h2>
-            {Object.entries(RUSSIAN_MODES).map(([key, m]) => (
-              <div key={key} style={{ marginBottom: "14px" }}>
-                <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: "14px" }}>
-                  {m.name} ({m.alias}){(data.russianMode || "free") === key ? " · выбрана" : ""}
-                </p>
-                {m.rules.map((r, i) => (
-                  <p key={i} style={{ ...styles.hint, margin: "2px 0" }}>
-                    • {r}
-                  </p>
-                ))}
-              </div>
-            ))}
+            {Object.entries(RUSSIAN_MODES).map(([key, m]) => {
+              const isOpen = openRuleKey === key;
+              return (
+                <div key={key} style={{ marginBottom: "8px", borderBottom: `1px solid ${styles.tableBorder || "rgba(128,128,128,0.2)"}` }}>
+                  <button
+                    onClick={() => setOpenRuleKey(isOpen ? null : key)}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      width: "100%",
+                      background: "none",
+                      border: "none",
+                      padding: "8px 0",
+                      cursor: "pointer",
+                      color: "inherit",
+                      font: "inherit",
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, fontSize: "14px", textAlign: "left" }}>
+                      {m.name} ({m.alias}){(data.russianMode || "free") === key ? " · выбрана" : ""}
+                    </span>
+                    <span style={{ opacity: 0.6, fontSize: "12px" }}>{isOpen ? "▲" : "▾"}</span>
+                  </button>
+                  {isOpen && (
+                    <div style={{ paddingBottom: "10px" }}>
+                      {m.rules.map((r, i) => (
+                        <p key={i} style={{ ...styles.hint, margin: "2px 0" }}>
+                          • {r}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             <button style={{ ...styles.cancelBtn, marginTop: "8px" }} onClick={() => setRulesOpen(false)}>
               Закрыть
             </button>
