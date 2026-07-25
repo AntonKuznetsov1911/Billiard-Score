@@ -1049,13 +1049,11 @@ export default function BilliardsTracker() {
     let count = 0;
     const totalTicks = 9;
     const timer = setInterval(() => {
-      setDiceRolls((prev) => {
-        const next = { ...(prev || {}) };
-        ids.forEach((id) => {
-          next[id] = 1 + Math.floor(Math.random() * 6);
-        });
-        return next;
+      const next = {};
+      ids.forEach((id) => {
+        next[id] = 1 + Math.floor(Math.random() * 6);
       });
+      setDiceRolls(next);
       count += 1;
       if (count >= totalTicks) {
         clearInterval(timer);
@@ -1235,6 +1233,7 @@ export default function BilliardsTracker() {
       gameType: g.gameType || "russian",
       mode: g.mode || null,
       solo,
+      seriesId: sameSet ? s.id : null,
     };
     updateData((prev) => ({ ...prev, matches: [...prev.matches, match], activeGame: null, activeSeries: nextSeries }));
     setTieCandidates(null);
@@ -1310,10 +1309,20 @@ export default function BilliardsTracker() {
 
   const deleteMatch = (id) => {
     haptic("light");
-    updateData((prev) => ({
-      ...prev,
-      matches: prev.matches.filter((m) => m.id !== id),
-    }));
+    updateData((prev) => {
+      const removed = prev.matches.find((m) => m.id === id);
+      let activeSeries = prev.activeSeries;
+      if (removed && removed.seriesId && activeSeries && activeSeries.id === removed.seriesId) {
+        const wins = { ...activeSeries.wins };
+        wins[removed.winnerId] = Math.max(0, (wins[removed.winnerId] || 0) - 1);
+        activeSeries = { ...activeSeries, wins };
+      }
+      return {
+        ...prev,
+        matches: prev.matches.filter((m) => m.id !== id),
+        activeSeries,
+      };
+    });
     setSelectedMatchId((cur) => (cur === id ? null : cur));
   };
 
@@ -1434,7 +1443,7 @@ export default function BilliardsTracker() {
   const h2hStats = useMemo(() => {
     const { a, b } = h2h;
     if (!a || !b || a === b) return null;
-    const ms = data.matches.filter((m) => !m.solo && m.participants.includes(a) && m.participants.includes(b));
+    const ms = data.matches.filter((m) => !m.solo && m.participants.length === 2 && m.participants.includes(a) && m.participants.includes(b));
     let wa = 0;
     let wb = 0;
     let ba = 0;
