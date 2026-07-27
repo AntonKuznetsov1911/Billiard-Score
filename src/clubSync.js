@@ -22,6 +22,12 @@ export async function sendMagicLink(email) {
   if (error) throw error;
 }
 
+export async function verifyEmailOtp(email, token) {
+  const client = requireClient();
+  const { error } = await client.auth.verifyOtp({ email, token: token.trim(), type: "email" });
+  if (error) throw error;
+}
+
 export async function signInWithGoogle() {
   const client = requireClient();
   const { error } = await client.auth.signInWithOAuth({
