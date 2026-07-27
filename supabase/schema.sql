@@ -33,6 +33,24 @@ alter table clubs enable row level security;
 alter table club_members enable row level security;
 alter table club_state enable row level security;
 
+-- Проверка "состоит ли текущий пользователь в клубе X" вынесена в отдельную
+-- security definer функцию: она выполняется с обходом RLS, поэтому политика
+-- club_members, которая иначе обращалась бы сама к себе через подзапрос,
+-- не уходит в бесконечную рекурсию (ошибка "infinite recursion detected
+-- in policy for relation club_members").
+create or replace function public.is_club_member(target_club_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from club_members
+    where club_id = target_club_id and user_id = auth.uid()
+  );
+$$;
+
 -- clubs: любой вошедший пользователь может найти клуб по коду (это и есть приглашение),
 -- но создать клуб можно только от своего имени.
 create policy "clubs_select_authenticated" on clubs
@@ -43,9 +61,7 @@ create policy "clubs_insert_own" on clubs
 
 -- club_members: видно только строки твоих собственных клубов; вступить можно только самому себе.
 create policy "club_members_select_own_clubs" on club_members
-  for select to authenticated using (
-    club_id in (select club_id from club_members where user_id = auth.uid())
-  );
+  for select to authenticated using (is_club_member(club_id));
 
 create policy "club_members_insert_self" on club_members
   for insert to authenticated with check (user_id = auth.uid());
@@ -55,19 +71,13 @@ create policy "club_members_delete_self" on club_members
 
 -- club_state: читать и писать может только участник этого клуба.
 create policy "club_state_select_members" on club_state
-  for select to authenticated using (
-    club_id in (select club_id from club_members where user_id = auth.uid())
-  );
+  for select to authenticated using (is_club_member(club_id));
 
 create policy "club_state_insert_members" on club_state
-  for insert to authenticated with check (
-    club_id in (select club_id from club_members where user_id = auth.uid())
-  );
+  for insert to authenticated with check (is_club_member(club_id));
 
 create policy "club_state_update_members" on club_state
-  for update to authenticated using (
-    club_id in (select club_id from club_members where user_id = auth.uid())
-  );
+  for update to authenticated using (is_club_member(club_id));
 
 -- Realtime: включить публикацию изменений club_state, чтобы все участники видели обновления сразу.
 alter publication supabase_realtime add table club_state;
