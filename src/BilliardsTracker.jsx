@@ -3,6 +3,7 @@ import { saveToCloud, loadFromCloud, cloudSyncAvailable } from "./cloudSync.js";
 import { isCloudConfigured } from "./supabaseClient.js";
 import {
   sendMagicLink,
+  verifyEmailOtp,
   signInWithGoogle,
   onAuthChange,
   getSession,
@@ -1102,8 +1103,9 @@ export default function BilliardsTracker() {
   const [editDraft, setEditDraft] = useState(null);
   const [authSession, setAuthSession] = useState(null);
   const [authEmail, setAuthEmail] = useState("");
-  const [authStatus, setAuthStatus] = useState("idle"); // idle | sending | sent | error
+  const [authStatus, setAuthStatus] = useState("idle"); // idle | sending | sent | verifying | error
   const [authError, setAuthError] = useState("");
+  const [authCode, setAuthCode] = useState("");
   const [club, setClub] = useState(null);
   const [clubBusy, setClubBusy] = useState(false);
   const [clubError, setClubError] = useState("");
@@ -1751,7 +1753,23 @@ export default function BilliardsTracker() {
       setAuthStatus("sent");
     } catch (e) {
       setAuthStatus("error");
-      setAuthError(e.message || "Не удалось отправить ссылку");
+      setAuthError(e.message || "Не удалось отправить код");
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    const code = authCode.trim();
+    const email = authEmail.trim();
+    if (!code || !email) return;
+    setAuthStatus("verifying");
+    setAuthError("");
+    try {
+      await verifyEmailOtp(email, code);
+      setAuthCode("");
+      setAuthStatus("idle");
+    } catch (e) {
+      setAuthStatus("error");
+      setAuthError(e.message || "Неверный или устаревший код");
     }
   };
 
@@ -2971,15 +2989,36 @@ export default function BilliardsTracker() {
                           value={authEmail}
                           onChange={(e) => setAuthEmail(e.target.value)}
                           onKeyDown={(e) => e.key === "Enter" && handleSendMagicLink()}
+                          disabled={authStatus === "sent" || authStatus === "verifying"}
                         />
-                        <button style={styles.brassBtn} onClick={handleSendMagicLink} disabled={authStatus === "sending"}>
-                          Прислать ссылку
+                        <button
+                          style={styles.brassBtn}
+                          onClick={handleSendMagicLink}
+                          disabled={authStatus === "sending" || authStatus === "sent" || authStatus === "verifying"}
+                        >
+                          {authStatus === "sent" ? "Код отправлен" : "Прислать код"}
                         </button>
                       </div>
-                      {authStatus === "sent" && (
-                        <p style={{ ...styles.hint, color: "#3E9B5C" }}>
-                          Проверьте почту — там ссылка для входа. Откройте её на этом устройстве.
-                        </p>
+                      {(authStatus === "sent" || authStatus === "verifying") && (
+                        <>
+                          <p style={{ ...styles.hint, color: "#3E9B5C" }}>
+                            Проверьте почту — пришёл 6-значный код. Введите его ниже.
+                          </p>
+                          <div style={styles.addRow}>
+                            <input
+                              style={styles.input}
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="Код из письма"
+                              value={authCode}
+                              onChange={(e) => setAuthCode(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && handleVerifyCode()}
+                            />
+                            <button style={styles.brassBtn} onClick={handleVerifyCode} disabled={authStatus === "verifying"}>
+                              Подтвердить
+                            </button>
+                          </div>
+                        </>
                       )}
                       {authStatus === "error" && <p style={{ ...styles.hint, color: COLORS.danger }}>{authError}</p>}
                       <p style={{ ...styles.hint, margin: "12px 0 6px" }}>или</p>
