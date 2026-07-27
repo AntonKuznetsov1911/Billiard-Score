@@ -3,6 +3,7 @@ import { saveToCloud, loadFromCloud, cloudSyncAvailable } from "./cloudSync.js";
 import { isCloudConfigured } from "./supabaseClient.js";
 import {
   sendMagicLink,
+  signInWithGoogle,
   onAuthChange,
   getSession,
   signOut as clubSignOut,
@@ -1754,6 +1755,17 @@ export default function BilliardsTracker() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setAuthStatus("sending");
+    setAuthError("");
+    try {
+      await signInWithGoogle();
+    } catch (e) {
+      setAuthStatus("error");
+      setAuthError(e.message || "Не удалось войти через Google");
+    }
+  };
+
   const handleSignOut = async () => {
     await clubSignOut();
     setAuthSession(null);
@@ -2970,6 +2982,10 @@ export default function BilliardsTracker() {
                         </p>
                       )}
                       {authStatus === "error" && <p style={{ ...styles.hint, color: COLORS.danger }}>{authError}</p>}
+                      <p style={{ ...styles.hint, margin: "12px 0 6px" }}>или</p>
+                      <button style={{ ...styles.diceBtn, width: "100%" }} onClick={handleGoogleSignIn} disabled={authStatus === "sending"}>
+                        Войти через Google
+                      </button>
                     </>
                   )}
                   {authSession && !club && (
