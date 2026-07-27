@@ -66,6 +66,12 @@ create policy "club_members_select_own_clubs" on club_members
 create policy "club_members_insert_self" on club_members
   for insert to authenticated with check (user_id = auth.uid());
 
+-- Нужна для upsert при повторном вступлении в клуб (joinClub делает
+-- insert ... on conflict do update, а без update-политики конфликтная
+-- ветка блокируется RLS с ошибкой "new row violates row-level security").
+create policy "club_members_update_self" on club_members
+  for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
 create policy "club_members_delete_self" on club_members
   for delete to authenticated using (user_id = auth.uid());
 
