@@ -96,8 +96,8 @@ export async function joinClub(code, displayName) {
   if (!club) throw new Error("Клуб с таким кодом не найден");
   const { error: joinError } = await client
     .from("club_members")
-    .upsert({ club_id: club.id, user_id: user.id, display_name: displayName || null }, { onConflict: "club_id,user_id" });
-  if (joinError) throw joinError;
+    .insert({ club_id: club.id, user_id: user.id, display_name: displayName || null });
+  if (joinError && joinError.code !== "23505") throw joinError; // 23505 — уже состоит в клубе, это ок
   return club;
 }
 
