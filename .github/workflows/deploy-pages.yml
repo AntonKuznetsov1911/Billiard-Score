@@ -17,6 +17,12 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Also bound to the github-pages environment so this job can see secrets
+    # added there (GitHub's UI nudges people toward "Environment secrets" on
+    # this environment rather than plain repository secrets) as well as
+    # regular repository secrets, which are visible to every job regardless.
+    environment:
+      name: github-pages
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
