@@ -22,6 +22,15 @@ export async function sendMagicLink(email) {
   if (error) throw error;
 }
 
+export async function signInWithGoogle() {
+  const client = requireClient();
+  const { error } = await client.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: window.location.href },
+  });
+  if (error) throw error;
+}
+
 export function onAuthChange(callback) {
   if (!supabase) return () => {};
   const { data } = supabase.auth.onAuthStateChange((_event, session) => callback(session));
