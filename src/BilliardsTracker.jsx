@@ -1,5 +1,19 @@
 import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from "react";
 import { saveToCloud, loadFromCloud, cloudSyncAvailable } from "./cloudSync.js";
+import { isCloudConfigured } from "./supabaseClient.js";
+import {
+  sendMagicLink,
+  onAuthChange,
+  getSession,
+  signOut as clubSignOut,
+  createClub,
+  joinClub,
+  leaveClub,
+  getMyClub,
+  fetchClubState,
+  pushClubState,
+  subscribeClubState,
+} from "./clubSync.js";
 
 const RatingChart = lazy(() => import("./RatingChart.jsx"));
 
@@ -1085,6 +1099,15 @@ export default function BilliardsTracker() {
   const [gameMode, setGameMode] = useState(false);
   const [editMatchId, setEditMatchId] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
+  const [authSession, setAuthSession] = useState(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authStatus, setAuthStatus] = useState("idle"); // idle | sending | sent | error
+  const [authError, setAuthError] = useState("");
+  const [club, setClub] = useState(null);
+  const [clubBusy, setClubBusy] = useState(false);
+  const [clubError, setClubError] = useState("");
+  const [clubCodeInput, setClubCodeInput] = useState("");
+  const [clubNameInput, setClubNameInput] = useState("");
 
   useEffect(() => {
     const tg = getTG();
@@ -1135,6 +1158,61 @@ export default function BilliardsTracker() {
   }, []);
 
   useEffect(() => {
+    if (!isCloudConfigured()) return;
+    let active = true;
+    (async () => {
+      const session = await getSession();
+      if (active) setAuthSession(session);
+    })();
+    const unsubscribe = onAuthChange((session) => {
+      setAuthSession(session);
+      if (!session) setClub(null);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!authSession) return;
+    let active = true;
+    (async () => {
+      try {
+        const myClub = await getMyClub();
+        if (active && myClub) setClub(myClub);
+      } catch (e) {
+        // not critical — user just isn't in a club yet
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [authSession]);
+
+  useEffect(() => {
+    if (!club) return;
+    let active = true;
+    (async () => {
+      try {
+        const remote = await fetchClubState(club.id);
+        if (active && remote && remote.data) {
+          setData(normalizeData({ ...remote.data, updatedAt: remote.updatedAt }));
+        }
+      } catch (e) {
+        setClubError("Не удалось загрузить данные клуба");
+      }
+    })();
+    const unsubscribe = subscribeClubState(club.id, (remoteData, updatedAt) => {
+      setData(normalizeData({ ...remoteData, updatedAt }));
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [club]);
+
+  useEffect(() => {
     const tg = getTG();
     if (!tg) return;
     try {
@@ -1171,15 +1249,24 @@ export default function BilliardsTracker() {
     };
   }, [selectedMatchId]);
 
-  const persist = useCallback(async (next) => {
-    try {
-      await window.storage.set(STORAGE_KEY, JSON.stringify(next), false);
-    } catch (e) {
-      console.error("Storage error", e);
-    }
-    // Best-effort mirror to Telegram CloudStorage; silently no-ops outside Telegram.
-    saveToCloud(next).catch(() => {});
-  }, []);
+  const persist = useCallback(
+    async (next) => {
+      try {
+        await window.storage.set(STORAGE_KEY, JSON.stringify(next), false);
+      } catch (e) {
+        console.error("Storage error", e);
+      }
+      // Best-effort mirror to Telegram CloudStorage; silently no-ops outside Telegram.
+      saveToCloud(next).catch(() => {});
+      // Best-effort mirror to the shared club, if any; the realtime subscription applies
+      // remote changes via a separate setData call that never goes through persist(), so
+      // there's no echo loop to guard against here.
+      if (club) {
+        pushClubState(club.id, next).catch(() => setClubError("Не удалось синхронизировать с клубом"));
+      }
+    },
+    [club]
+  );
 
   const updateData = useCallback(
     (updater) => {
@@ -1639,6 +1726,71 @@ export default function BilliardsTracker() {
     });
     setEditMatchId(null);
     setEditDraft(null);
+  };
+
+  const handleSendMagicLink = async () => {
+    const email = authEmail.trim();
+    if (!email) return;
+    setAuthStatus("sending");
+    setAuthError("");
+    try {
+      await sendMagicLink(email);
+      setAuthStatus("sent");
+    } catch (e) {
+      setAuthStatus("error");
+      setAuthError(e.message || "Не удалось отправить ссылку");
+    }
+  };
+
+  const handleSignOut = async () => {
+    await clubSignOut();
+    setAuthSession(null);
+    setClub(null);
+    setAuthStatus("idle");
+    setAuthEmail("");
+  };
+
+  const handleCreateClub = async () => {
+    setClubBusy(true);
+    setClubError("");
+    try {
+      const newClub = await createClub(clubNameInput.trim());
+      setClub(newClub);
+      setClubNameInput("");
+    } catch (e) {
+      setClubError(e.message || "Не удалось создать клуб");
+    } finally {
+      setClubBusy(false);
+    }
+  };
+
+  const handleJoinClub = async () => {
+    if (!clubCodeInput.trim()) return;
+    setClubBusy(true);
+    setClubError("");
+    try {
+      const joined = await joinClub(clubCodeInput.trim());
+      setClub(joined);
+      setClubCodeInput("");
+    } catch (e) {
+      setClubError(e.message || "Не удалось присоединиться к клубу");
+    } finally {
+      setClubBusy(false);
+    }
+  };
+
+  const handleLeaveClub = async () => {
+    if (!club) return;
+    if (!window.confirm("Покинуть клуб? Локальные данные на этом устройстве останутся, но общий доступ прекратится.")) return;
+    setClubBusy(true);
+    try {
+      await leaveClub(club.id);
+      setClub(null);
+    } catch (e) {
+      setClubError(e.message || "Не удалось покинуть клуб");
+    } finally {
+      setClubBusy(false);
+    }
   };
 
   const clearAll = () => {
@@ -2777,6 +2929,98 @@ export default function BilliardsTracker() {
                   </button>
                 </div>
               </div>
+
+              {isCloudConfigured() && (
+                <div style={styles.card}>
+                  <h2 style={styles.h2}>Общий доступ (клуб)</h2>
+                  {!authSession && (
+                    <>
+                      <p style={styles.hint}>
+                        Войдите по email, чтобы создать клуб или присоединиться к нему — тогда партии будут видны всем
+                        участникам клуба в реальном времени.
+                      </p>
+                      <div style={styles.addRow}>
+                        <input
+                          style={styles.input}
+                          type="email"
+                          placeholder="Ваш email"
+                          value={authEmail}
+                          onChange={(e) => setAuthEmail(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleSendMagicLink()}
+                        />
+                        <button style={styles.brassBtn} onClick={handleSendMagicLink} disabled={authStatus === "sending"}>
+                          Прислать ссылку
+                        </button>
+                      </div>
+                      {authStatus === "sent" && (
+                        <p style={{ ...styles.hint, color: "#3E9B5C" }}>
+                          Проверьте почту — там ссылка для входа. Откройте её на этом устройстве.
+                        </p>
+                      )}
+                      {authStatus === "error" && <p style={{ ...styles.hint, color: COLORS.danger }}>{authError}</p>}
+                    </>
+                  )}
+                  {authSession && !club && (
+                    <>
+                      <p style={styles.hint}>Вы вошли как {authSession.user.email}.</p>
+                      {clubError && <p style={{ ...styles.hint, color: COLORS.danger }}>{clubError}</p>}
+                      <div style={{ marginTop: "10px" }}>
+                        <p style={styles.hint}>Создать новый клуб</p>
+                        <div style={styles.addRow}>
+                          <input
+                            style={styles.input}
+                            placeholder="Название клуба (необязательно)"
+                            value={clubNameInput}
+                            onChange={(e) => setClubNameInput(e.target.value)}
+                          />
+                          <button style={styles.brassBtn} onClick={handleCreateClub} disabled={clubBusy}>
+                            Создать
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: "12px" }}>
+                        <p style={styles.hint}>Или присоединиться по коду</p>
+                        <div style={styles.addRow}>
+                          <input
+                            style={styles.input}
+                            placeholder="Код клуба"
+                            value={clubCodeInput}
+                            onChange={(e) => setClubCodeInput(e.target.value.toUpperCase())}
+                          />
+                          <button style={styles.diceBtn} onClick={handleJoinClub} disabled={clubBusy}>
+                            Войти
+                          </button>
+                        </div>
+                      </div>
+                      <button style={{ ...styles.ghostBtn, marginTop: "10px" }} onClick={handleSignOut}>
+                        Выйти из аккаунта
+                      </button>
+                    </>
+                  )}
+                  {authSession && club && (
+                    <>
+                      <div style={{ ...styles.breakerBanner, textAlign: "left" }}>
+                        Клуб: <strong>{club.name}</strong>
+                        <div style={{ marginTop: "6px" }}>
+                          Код приглашения: <span style={styles.mono}>{club.code}</span>
+                        </div>
+                        <p style={{ ...styles.hint, margin: "6px 0 0" }}>
+                          Поделитесь кодом с остальными игроками — им нужно один раз войти по email и ввести этот код.
+                        </p>
+                      </div>
+                      {clubError && <p style={{ ...styles.hint, color: COLORS.danger }}>{clubError}</p>}
+                      <div style={styles.settingBtnRow}>
+                        <button style={styles.diceBtn} onClick={handleLeaveClub} disabled={clubBusy}>
+                          Покинуть клуб
+                        </button>
+                        <button style={styles.ghostBtn} onClick={handleSignOut}>
+                          Выйти из аккаунта
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
 
               <div style={styles.card}>
                 <h2 style={styles.h2}>Резервная копия</h2>
