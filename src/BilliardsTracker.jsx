@@ -1159,6 +1159,18 @@ export default function BilliardsTracker() {
 
   useEffect(() => {
     if (!isCloudConfigured()) return;
+    // Ссылка входа могла истечь, быть уже использованной (например, почтовый
+    // сервис заранее "открывает" ссылки для проверки на фишинг) или домен не
+    // совпал с настройками Supabase — в этих случаях Supabase не выдаёт сессию,
+    // а возвращает ошибку прямо в hash адреса, которую иначе никто не покажет.
+    const hash = window.location.hash;
+    if (hash && hash.includes("error=")) {
+      const params = new URLSearchParams(hash.slice(1));
+      const desc = params.get("error_description") || params.get("error") || "Ссылка для входа недействительна";
+      setAuthStatus("error");
+      setAuthError(decodeURIComponent(desc.replace(/\+/g, " ")));
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
     let active = true;
     (async () => {
       const session = await getSession();
