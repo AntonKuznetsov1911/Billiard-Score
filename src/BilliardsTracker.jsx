@@ -110,6 +110,11 @@ const GAME_TYPES = {
   pool: { label: "Пул" },
 };
 
+const APP_TITLE = {
+  russian: "Твой бильярд",
+  pool: "Your Pool",
+};
+
 const TWO_RAILS_RULE =
   "Правило двух бортов: если после удара битком по прицельному шару ни один шар не забит, удар засчитывается, только если выполнено одно из: любой шар (биток или прицельный) коснулся двух бортов; два разных шара коснулись по одному борту каждый; шар коснулся борта и затем пересёк среднюю линию стола (или наоборот — сначала пересёк линию, потом коснулся борта). Иначе — нарушение (в обиходе «недокат»).";
 
@@ -705,15 +710,15 @@ function computeStats(players, matches) {
 function makeStyles(dark) {
   const T = dark
     ? {
-        cardBg: "rgba(20,22,18,0.34)",
-        cardBorder: "rgba(255,255,255,0.10)",
+        cardBg: "rgba(20,22,18,0.20)",
+        cardBorder: "rgba(255,255,255,0.16)",
         text: "#F1EAD8",
         sub: "#CDC3A6",
         inputBg: "rgba(255,255,255,0.07)",
         inputBorder: "rgba(255,255,255,0.18)",
         chipBg: "rgba(255,255,255,0.09)",
         chipBorder: "rgba(255,255,255,0.18)",
-        navBg: "rgba(20,22,18,0.35)",
+        navBg: "rgba(20,22,18,0.26)",
         navText: "#F1E9D2",
         headerBg: "rgba(10,20,15,0.22)",
         tableBorder: "rgba(255,255,255,0.18)",
@@ -721,15 +726,15 @@ function makeStyles(dark) {
         modalBg: "#1C1D18",
       }
     : {
-        cardBg: "rgba(255,251,242,0.60)",
-        cardBorder: "#CDBB90",
+        cardBg: "rgba(255,251,242,0.38)",
+        cardBorder: "rgba(205,187,144,0.75)",
         text: COLORS.ink,
         sub: "#6E6248",
-        inputBg: "rgba(251,247,238,0.92)",
+        inputBg: "rgba(251,247,238,0.75)",
         inputBorder: "#D8CBA9",
-        chipBg: "rgba(239,230,204,0.92)",
+        chipBg: "rgba(239,230,204,0.75)",
         chipBorder: "#DCC98F",
-        navBg: "rgba(246,240,226,0.60)",
+        navBg: "rgba(246,240,226,0.45)",
         navText: COLORS.wood,
         headerBg: "rgba(10,20,15,0.16)",
         tableBorder: COLORS.wood,
@@ -762,26 +767,47 @@ function makeStyles(dark) {
       fontOpticalSizing: "auto",
       fontStyle: "italic",
       fontWeight: 600,
-      fontSize: "32px",
-      letterSpacing: "0.4px",
-      color: "#F8F1DE",
+      fontSize: "34px",
+      letterSpacing: "0.6px",
       margin: 0,
-      textShadow: "0 2px 10px rgba(0,0,0,0.55)",
       display: "inline-block",
+      backgroundImage: "linear-gradient(120deg, #FBF0D2 0%, #E7CE93 45%, #C08A3E 75%, #F1DDA6 100%)",
+      backgroundClip: "text",
+      WebkitBackgroundClip: "text",
+      WebkitTextFillColor: "transparent",
+      color: "#F8F1DE",
+      filter: "drop-shadow(0 2px 10px rgba(0,0,0,0.55))",
     },
-    gameTypeBadge: {
+    gameTypeSwitch: {
+      display: "inline-flex",
+      marginTop: "10px",
+      padding: "3px",
+      borderRadius: "999px",
+      background: "rgba(10,10,8,0.32)",
+      border: "1px solid rgba(255,255,255,0.20)",
+      backdropFilter: "blur(14px) saturate(150%)",
+      WebkitBackdropFilter: "blur(14px) saturate(150%)",
+      boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
+    },
+    gameTypeSwitchBtn: {
       display: "inline-flex",
       alignItems: "center",
       gap: "6px",
-      marginTop: "8px",
-      padding: "5px 14px",
+      padding: "6px 15px",
       borderRadius: "999px",
-      background: "rgba(0,0,0,0.3)",
-      border: "1px solid rgba(255,255,255,0.25)",
-      color: "#F1E9D2",
+      border: "none",
+      background: "transparent",
+      color: "rgba(241,233,210,0.65)",
       fontSize: "11.5px",
-      fontWeight: 600,
+      fontWeight: 700,
+      letterSpacing: "0.3px",
       cursor: "pointer",
+      transition: "background 0.25s ease, color 0.2s ease, box-shadow 0.25s ease",
+    },
+    gameTypeSwitchBtnActive: {
+      background: "linear-gradient(135deg, #D9A354 0%, #A9701F 100%)",
+      color: "#241705",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
     },
     bottomNav: {
       position: "fixed",
@@ -819,7 +845,16 @@ function makeStyles(dark) {
     },
     navIcon: { fontSize: "19px", lineHeight: 1 },
     main: { padding: "0 16px", maxWidth: "560px", margin: "0 auto" },
-    card: { background: T.cardBg, backdropFilter: "blur(20px) saturate(150%)", WebkitBackdropFilter: "blur(20px) saturate(150%)", border: `1px solid ${T.cardBorder}`, borderRadius: "16px", padding: "18px", marginBottom: "16px", boxShadow: "0 2px 12px rgba(0,0,0,0.18)" },
+    card: {
+      background: T.cardBg,
+      backdropFilter: "blur(26px) saturate(160%)",
+      WebkitBackdropFilter: "blur(26px) saturate(160%)",
+      border: `1px solid ${T.cardBorder}`,
+      borderRadius: "16px",
+      padding: "18px",
+      marginBottom: "16px",
+      boxShadow: "0 2px 16px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.10)",
+    },
     h2: { fontFamily: "'Fraunces', serif", fontSize: "17px", fontWeight: 600, margin: "0 0 12px", color: dark ? "#E7CE93" : COLORS.wood, borderLeft: `3px solid ${COLORS.brass}`, paddingLeft: "10px" },
     addRow: { display: "flex", gap: "8px" },
     input: { flex: 1, padding: "10px 12px", borderRadius: "8px", border: `1px solid ${T.inputBorder}`, fontSize: "14px", background: T.inputBg, color: T.text },
@@ -1978,17 +2013,36 @@ export default function BilliardsTracker() {
       <div style={styles.page}>
         {!immersive && (
           <header style={styles.header} className="no-print">
-            <h1 style={styles.title}>
-              Твой бильярд
+            <h1 style={styles.title} key={data.gameType || "russian"} className="tab-fade">
+              {APP_TITLE[data.gameType || "russian"]}
               <CueExclamation height={30} />
             </h1>
-            <button
-              style={styles.gameTypeBadge}
-              onClick={() => setGameType((data.gameType || "russian") === "pool" ? "russian" : "pool")}
-              aria-label="Переключить дисциплину"
-            >
-              <GameIcon type={data.gameType || "russian"} /> {GAME_TYPES[data.gameType || "russian"].label}
-            </button>
+            <div style={styles.gameTypeSwitch} role="tablist" aria-label="Дисциплина">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={(data.gameType || "russian") !== "pool"}
+                style={{
+                  ...styles.gameTypeSwitchBtn,
+                  ...((data.gameType || "russian") !== "pool" ? styles.gameTypeSwitchBtnActive : {}),
+                }}
+                onClick={() => setGameType("russian")}
+              >
+                <GameIcon type="russian" size={13} /> Русский
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={(data.gameType || "russian") === "pool"}
+                style={{
+                  ...styles.gameTypeSwitchBtn,
+                  ...((data.gameType || "russian") === "pool" ? styles.gameTypeSwitchBtnActive : {}),
+                }}
+                onClick={() => setGameType("pool")}
+              >
+                <GameIcon type="pool" size={13} /> Pool
+              </button>
+            </div>
           </header>
         )}
 
