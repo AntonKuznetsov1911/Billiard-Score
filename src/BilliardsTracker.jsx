@@ -16,6 +16,8 @@ import {
   pushClubState,
   subscribeClubState,
 } from "./clubSync.js";
+import tableRussianPhoto from "./assets/table-russian.jpg";
+import tablePoolPhoto from "./assets/table-pool.jpg";
 
 const RatingChart = lazy(() => import("./RatingChart.jsx"));
 
@@ -558,224 +560,44 @@ function Confetti({ active }) {
 }
 function TableArt({ gameType }) {
   const isPool = gameType === "pool";
-  const objectBallFill = isPool ? "url(#poolBallGrad)" : "url(#redBallGrad)";
-
-  // Square canvas 900x900, top-down table. The shot (cue, both balls, target
-  // pocket) lives in the central zone (x 260-660, y 250-650) which stays
-  // visible under "slice" cropping on any screen aspect ratio.
-  const felt = { x1: 262, y1: 72, x2: 638, y2: 828 };
-  const midY = (felt.y1 + felt.y2) / 2; // 450
-
-  // Shot: cue strikes red -> red rolls into white -> white drops into the
-  // mid-right side pocket (dead center of the safe zone).
-  const redStart = { x: 352, y: 598 };
-  const whiteStart = { x: 522, y: 508 };
-
-  const dx = whiteStart.x - redStart.x;
-  const dy = whiteStart.y - redStart.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  const ux = dx / dist;
-  const uy = dy / dist;
-  const angleDeg = (Math.atan2(dy, dx) * 180) / Math.PI;
-  const ballRadius = 13;
-  const tipX = redStart.x - ux * (ballRadius + 3);
-  const tipY = redStart.y - uy * (ballRadius + 3);
-
-  // Correct real-table pocket layout: 4 corners + 2 side middles.
-  // Centers sit slightly OUTSIDE the felt edge (cut into the rail),
-  // like real pocket openings; `ax/ay` is the outward direction.
-  const pockets = [
-    { x: felt.x1 - 4, y: felt.y1 - 4, r: 21, ax: -1, ay: -1 }, // top-left corner
-    { x: felt.x2 + 4, y: felt.y1 - 4, r: 21, ax: 1, ay: -1 }, // top-right corner
-    { x: felt.x1 - 7, y: midY, r: 19, ax: -1, ay: 0 }, // mid-left side
-    { x: felt.x2 + 7, y: midY, r: 19, ax: 1, ay: 0 }, // mid-right side (shot target)
-    { x: felt.x1 - 4, y: felt.y2 + 4, r: 21, ax: -1, ay: 1 }, // bottom-left corner
-    { x: felt.x2 + 4, y: felt.y2 + 4, r: 21, ax: 1, ay: 1 }, // bottom-right corner
-  ];
-
-  const diamondsX = [353, 405, 495, 547];
-  const diamondsY = [166, 261, 356, 544, 639, 734];
-
-  // Remaining balls scattered around the felt (fixed "random" layout).
-  // Total on table = 16: these 14 + the animated cue ball + object ball.
-  // Positions avoid the shot corridor, the cue, and all six pockets.
-  const scatter = [
-    { x: 300, y: 140 },
-    { x: 430, y: 122 },
-    { x: 560, y: 172 },
-    { x: 332, y: 232 },
-    { x: 500, y: 262 },
-    { x: 598, y: 312 },
-    { x: 292, y: 342 },
-    { x: 422, y: 382 },
-    { x: 310, y: 482 },
-    { x: 577, y: 562 },
-    { x: 590, y: 662 },
-    { x: 362, y: 702 },
-    { x: 482, y: 762 },
-    { x: 302, y: 792 },
-  ];
 
   return (
-    <svg
-      viewBox="0 0 900 900"
-      preserveAspectRatio="xMidYMid slice"
-      style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
-      aria-hidden="true"
-    >
-      <defs>
-        <linearGradient id="bgRoomGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#140F0B" />
-          <stop offset="100%" stopColor="#0C2A1F" />
-        </linearGradient>
-        <radialGradient id="feltTopGrad" cx="50%" cy="42%" r="75%">
-          <stop offset="0%" stopColor="#1C6B4C" />
-          <stop offset="55%" stopColor="#13503A" />
-          <stop offset="100%" stopColor="#0A3125" />
-        </radialGradient>
-        <linearGradient id="railWoodGrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#7A4B2C" />
-          <stop offset="50%" stopColor="#5A3821" />
-          <stop offset="100%" stopColor="#3D2515" />
-        </linearGradient>
-        <radialGradient id="ballGrad" cx="35%" cy="30%" r="75%">
-          <stop offset="0%" stopColor="#FFFDF6" />
-          <stop offset="60%" stopColor="#EDE0C8" />
-          <stop offset="100%" stopColor="#C9B98F" />
-        </radialGradient>
-        <radialGradient id="redBallGrad" cx="35%" cy="28%" r="75%">
-          <stop offset="0%" stopColor="#FF7A68" />
-          <stop offset="55%" stopColor="#D9291F" />
-          <stop offset="100%" stopColor="#7A1220" />
-        </radialGradient>
-        <radialGradient id="poolBallGrad" cx="35%" cy="28%" r="75%">
-          <stop offset="0%" stopColor="#FFE07A" />
-          <stop offset="55%" stopColor="#F0B429" />
-          <stop offset="100%" stopColor="#8A5A0A" />
-        </radialGradient>
-        <linearGradient id="shotCueGrad" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#38121A" />
-          <stop offset="40%" stopColor="#6E2733" />
-          <stop offset="62%" stopColor="#E4D2AE" />
-          <stop offset="100%" stopColor="#FBF4E4" />
-        </linearGradient>
-        <radialGradient id="pocketHoleGrad" cx="50%" cy="40%" r="65%">
-          <stop offset="0%" stopColor="#020202" />
-          <stop offset="65%" stopColor="#060606" />
-          <stop offset="100%" stopColor="#0B1712" />
-        </radialGradient>
-        <radialGradient id="spotlightGrad" cx="50%" cy="45%" r="62%">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.14" />
-          <stop offset="55%" stopColor="#ffffff" stopOpacity="0.03" />
-          <stop offset="100%" stopColor="#000000" stopOpacity="0.30" />
-        </radialGradient>
-      </defs>
-
-      <rect width="900" height="900" fill="url(#bgRoomGrad)" />
-
-      {/* wooden rail frame */}
-      <rect x="212" y="24" width="476" height="852" rx="30" fill="url(#railWoodGrad)" />
-      <rect x="212" y="24" width="476" height="852" rx="30" fill="none" stroke="#0E0805" strokeWidth="3" opacity="0.5" />
-      {/* cushion nose */}
-      <rect x="244" y="54" width="412" height="792" rx="14" fill="#0A2E22" />
-      {/* playing felt */}
-      <rect x={felt.x1} y={felt.y1} width={felt.x2 - felt.x1} height={felt.y2 - felt.y1} rx="8" fill="url(#feltTopGrad)" />
-      <rect x={felt.x1} y={felt.y1} width={felt.x2 - felt.x1} height={felt.y2 - felt.y1} rx="8" fill="url(#spotlightGrad)" />
-
-      {/* rail diamonds */}
-      {diamondsX.map((x) => (
-        <circle key={"tdx" + x} cx={x} cy={39} r="3.4" fill="#EDE0C8" opacity="0.8" />
-      ))}
-      {diamondsX.map((x) => (
-        <circle key={"bdx" + x} cx={x} cy={861} r="3.4" fill="#EDE0C8" opacity="0.8" />
-      ))}
-      {diamondsY.map((y) => (
-        <circle key={"ldy" + y} cx={227} cy={y} r="3.4" fill="#EDE0C8" opacity="0.8" />
-      ))}
-      {diamondsY.map((y) => (
-        <circle key={"rdy" + y} cx={673} cy={y} r="3.4" fill="#EDE0C8" opacity="0.8" />
-      ))}
-
-      {/* 6 pockets as natural cut-in openings */}
-      {pockets.map((p, i) => (
-        <g key={"p" + i}>
-          {/* gap in the cushion where the pocket opens */}
-          <circle cx={p.x} cy={p.y} r={p.r + 6} fill="#0A2E22" />
-          {/* felt lip rolling over into the hole */}
-          <circle cx={p.x} cy={p.y} r={p.r + 2.5} fill="#0E3A2B" />
-          <circle cx={p.x} cy={p.y} r={p.r} fill="#072418" />
-          {/* the hole itself: deep, near-black throat */}
-          <circle cx={p.x} cy={p.y} r={p.r * 0.82} fill="url(#pocketHoleGrad)" />
-          {/* inner shadow on the far side of the throat */}
-          <path
-            d={`M ${p.x - p.r * 0.7} ${p.y + p.r * 0.35} A ${p.r * 0.78} ${p.r * 0.78} 0 0 0 ${p.x + p.r * 0.7} ${p.y + p.r * 0.35}`}
-            stroke="#000000"
-            strokeWidth="4"
-            opacity="0.55"
-            fill="none"
-            strokeLinecap="round"
-          />
-          {/* soft light catching the near lip */}
-          <path
-            d={`M ${p.x - p.r * 0.55} ${p.y - p.r * 0.5} A ${p.r * 0.72} ${p.r * 0.72} 0 0 1 ${p.x + p.r * 0.3} ${p.y - p.r * 0.66}`}
-            stroke="#3E8A66"
-            strokeWidth="2.4"
-            opacity="0.5"
-            fill="none"
-            strokeLinecap="round"
-          />
-        </g>
-      ))}
-
-      {/* remaining balls scattered on the felt */}
-      {scatter.map((b, i) => {
-        const pc = POOL_PALETTE[i % POOL_PALETTE.length];
-        return (
-          <g key={"sb" + i}>
-            <ellipse cx={b.x + 2} cy={b.y + 4} rx={ballRadius * 0.9} ry={ballRadius * 0.45} fill="#00000022" />
-            <circle
-              cx={b.x}
-              cy={b.y}
-              r={ballRadius}
-              fill={isPool ? pc.c : "url(#ballGrad)"}
-              stroke="#00000033"
-              strokeWidth="0.6"
-            />
-            <circle cx={b.x - 4} cy={b.y - 4} r="3.4" fill="#ffffff77" />
-          </g>
-        );
-      })}
-
-      {/* cue (no hand) */}
-      <g transform={`translate(${tipX},${tipY}) rotate(${angleDeg})`}>
-        <ellipse cx="-120" cy="6" rx="70" ry="6" fill="#00000028" />
-        <g style={{ animation: "cueStrike 6s linear infinite" }}>
-          <polygon points="0,-3 -250,-10 -250,10 0,3" fill="url(#shotCueGrad)" />
-          <circle cx="-4" cy="0" r="3" fill="#3D6E8F" />
-        </g>
-      </g>
-
-      {/* object ball (red for russian / yellow for pool) */}
-      <circle
-        cx={redStart.x}
-        cy={redStart.y}
-        r={ballRadius}
-        fill={objectBallFill}
-        stroke="#00000033"
-        strokeWidth="0.6"
-        style={{ animation: "redRoll 6s linear infinite" }}
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden" }} aria-hidden="true">
+      {/* real table photo, cross-fades between disciplines */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage: `url(${tableRussianPhoto})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center 42%",
+          opacity: isPool ? 0 : 1,
+          transition: "opacity 0.6s ease",
+          animation: "tableKenBurns 22s ease-in-out infinite alternate",
+        }}
       />
-      {/* cue/white ball that gets potted */}
-      <circle
-        cx={whiteStart.x}
-        cy={whiteStart.y}
-        r={ballRadius}
-        fill="url(#ballGrad)"
-        stroke="#00000033"
-        strokeWidth="0.6"
-        style={{ animation: "whiteRoll 6s linear infinite" }}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage: `url(${tablePoolPhoto})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center 42%",
+          opacity: isPool ? 1 : 0,
+          transition: "opacity 0.6s ease",
+          animation: "tableKenBurns 22s ease-in-out infinite alternate",
+        }}
       />
-    </svg>
+      {/* vignette so header/cards stay legible over a busy photo */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(180deg, rgba(4,10,7,0.55) 0%, rgba(4,10,7,0.15) 22%, rgba(4,10,7,0.10) 60%, rgba(4,10,7,0.6) 100%)",
+        }}
+      />
+    </div>
   );
 }
 
@@ -2133,6 +1955,10 @@ export default function BilliardsTracker() {
           0% { transform: scale(1); }
           45% { transform: scale(1.22); }
           100% { transform: scale(1); }
+        }
+        @keyframes tableKenBurns {
+          0% { transform: scale(1); }
+          100% { transform: scale(1.07); }
         }
         @keyframes fadeIn {
           0% { opacity: 0; transform: translateY(6px); }
