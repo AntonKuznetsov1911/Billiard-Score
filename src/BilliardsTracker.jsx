@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from "react";
 import { saveToCloud, loadFromCloud, cloudSyncAvailable } from "./cloudSync.js";
 import { isCloudConfigured } from "./supabaseClient.js";
 import {
@@ -376,6 +376,106 @@ function PlayerBall({ color, size = 14 }) {
     </svg>
   );
 }
+
+const WHEEL_ITEM_H = 44;
+const WHEEL_ROWS = 5;
+const WHEEL_MAX = 150;
+
+function ScoreWheel({ label, value, onChange, onClose }) {
+  const boxH = WHEEL_ITEM_H * WHEEL_ROWS;
+  const padY = (boxH - WHEEL_ITEM_H) / 2;
+  const listRef = useRef(null);
+  const scrollTimer = useRef(null);
+  const [current, setCurrent] = useState(value);
+
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = value * WHEEL_ITEM_H;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const settle = (v) => {
+    setCurrent(v);
+    onChange(v);
+  };
+
+  const handleScroll = () => {
+    if (scrollTimer.current) clearTimeout(scrollTimer.current);
+    scrollTimer.current = setTimeout(() => {
+      if (!listRef.current) return;
+      const idx = Math.round(listRef.current.scrollTop / WHEEL_ITEM_H);
+      settle(Math.max(0, Math.min(WHEEL_MAX, idx)));
+    }, 90);
+  };
+
+  const jumpTo = (v) => {
+    if (listRef.current) listRef.current.scrollTo({ top: v * WHEEL_ITEM_H, behavior: "smooth" });
+  };
+
+  return (
+    <div style={wheelStyles.overlay} onClick={onClose}>
+      <div style={wheelStyles.card} onClick={(e) => e.stopPropagation()}>
+        <p style={wheelStyles.label}>{label}</p>
+        <div style={{ position: "relative", height: boxH }}>
+          <div style={{ ...wheelStyles.centerBand, top: padY, height: WHEEL_ITEM_H }} />
+          <div
+            ref={listRef}
+            onScroll={handleScroll}
+            className="wheel-scroll"
+            style={{ ...wheelStyles.list, height: boxH, paddingTop: padY, paddingBottom: padY }}
+          >
+            {Array.from({ length: WHEEL_MAX + 1 }, (_, n) => (
+              <div key={n} onClick={() => jumpTo(n)} style={{ ...wheelStyles.item, height: WHEEL_ITEM_H, ...(n === current ? wheelStyles.itemActive : {}) }}>
+                {n}
+              </div>
+            ))}
+          </div>
+        </div>
+        <button style={wheelStyles.doneBtn} onClick={onClose}>
+          Готово
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const wheelStyles = {
+  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", zIndex: 60 },
+  card: { background: "#1C1D18", borderRadius: "18px", padding: "18px", width: "220px", boxShadow: "0 10px 30px rgba(0,0,0,0.45)", border: "1px solid rgba(255,255,255,0.12)" },
+  label: { color: "#E7DCC0", fontSize: "13px", fontWeight: 600, textAlign: "center", margin: "0 0 10px" },
+  centerBand: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    borderRadius: "10px",
+    background: "rgba(192,138,62,0.18)",
+    border: "1px solid rgba(231,206,147,0.4)",
+    pointerEvents: "none",
+  },
+  list: { overflowY: "scroll", scrollSnapType: "y mandatory" },
+  item: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    scrollSnapAlign: "center",
+    fontFamily: "'Space Mono', monospace",
+    fontSize: "18px",
+    fontWeight: 600,
+    color: "rgba(241,233,210,0.45)",
+    cursor: "pointer",
+  },
+  itemActive: { color: "#F8E7B8", fontSize: "24px", fontWeight: 700 },
+  doneBtn: {
+    marginTop: "12px",
+    width: "100%",
+    padding: "10px",
+    borderRadius: "10px",
+    border: "none",
+    background: COLORS.brass,
+    color: "#2C1D08",
+    fontWeight: 700,
+    fontSize: "13px",
+  },
+};
 
 function IconTrophy({ size = 14, color = COLORS.brass }) {
   return (
@@ -916,7 +1016,7 @@ function makeStyles(dark) {
       width: "56px",
       textAlign: "center",
       padding: "6px 2px",
-      MozAppearance: "textfield",
+      cursor: "pointer",
     },
     scoreBtns: { display: "flex", gap: "6px" },
     scoreBtnMinus: { width: "34px", height: "34px", borderRadius: "8px", border: "1px solid #4A6B57", background: "transparent", color: COLORS.cream, fontSize: "16px" },
@@ -977,6 +1077,7 @@ export default function BilliardsTracker() {
   const [victory, setVictory] = useState(null);
   const [seriesPick, setSeriesPick] = useState(1);
   const [scorePulse, setScorePulse] = useState({ pid: null, ts: 0 });
+  const [scoreWheelPid, setScoreWheelPid] = useState(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [gameMode, setGameMode] = useState(false);
   const [editMatchId, setEditMatchId] = useState(null);
@@ -1469,6 +1570,7 @@ export default function BilliardsTracker() {
       scores: g.scores,
       winnerId,
       breakerId: g.breakerId || null,
+      breakerPotted: null,
       durationMs,
       gameType: g.gameType || "russian",
       mode: g.mode || null,
@@ -1489,6 +1591,7 @@ export default function BilliardsTracker() {
     setDiceRolls(null);
     if (seriesInfo && seriesInfo.champion) setSeriesPick(1);
     setVictory({
+      matchId: match.id,
       winnerId,
       participants: g.participants,
       scores: g.scores,
@@ -1499,6 +1602,8 @@ export default function BilliardsTracker() {
       series: seriesInfo,
       settlement,
       bracket: bracketInfo,
+      breakerId: g.breakerId || null,
+      breakerPotted: null,
     });
     haptic("success");
     setCelebrate(true);
@@ -1508,6 +1613,15 @@ export default function BilliardsTracker() {
   const closeVictory = () => {
     setTab(victory && victory.bracket ? "play" : "rating");
     setVictory(null);
+  };
+
+  const setBreakerPotted = (potted) => {
+    if (!victory || !victory.matchId) return;
+    updateData((prev) => ({
+      ...prev,
+      matches: prev.matches.map((m) => (m.id === victory.matchId ? { ...m, breakerPotted: potted } : m)),
+    }));
+    setVictory((v) => (v ? { ...v, breakerPotted: potted } : v));
   };
 
   const shareVictory = async () => {
@@ -2023,6 +2137,8 @@ export default function BilliardsTracker() {
           100% { opacity: 1; transform: translateY(0); }
         }
         .tab-fade { animation: fadeIn 0.22s ease; }
+        .wheel-scroll::-webkit-scrollbar { display: none; }
+        .wheel-scroll { scrollbar-width: none; }
         @media print {
           .no-print { display: none !important; }
         }
@@ -2481,17 +2597,17 @@ export default function BilliardsTracker() {
                             animation: scorePulse.pid === pid ? "scorePop 0.32s ease" : "none",
                           }}
                         >
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            min="0"
-                            value={activeGame.scores[pid] || 0}
-                            onChange={(e) => setScore(pid, e.target.value)}
-                            onFocus={(e) => e.target.select()}
-                            onClick={(e) => e.stopPropagation()}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setScoreWheelPid(pid);
+                            }}
                             style={{ ...styles.scoreInput, ...(gameMode ? { fontSize: "28px", width: "68px", height: "50px" } : {}) }}
                             aria-label={`Счёт: ${nameById(pid)}`}
-                          />
+                          >
+                            {activeGame.scores[pid] || 0}
+                          </button>
                         </span>
                         <div style={styles.scoreBtns}>
                           <button
@@ -3127,6 +3243,12 @@ export default function BilliardsTracker() {
                   ))}
                 </div>
                 <p style={styles.hint}>Начинал: {selectedMatch.breakerId ? nameById(selectedMatch.breakerId) : "не указано"}</p>
+                {selectedMatch.breakerId && (
+                  <p style={styles.hint}>
+                    Забил при разборе:{" "}
+                    {selectedMatch.breakerPotted === true ? "Да" : selectedMatch.breakerPotted === false ? "Нет" : "не указано"}
+                  </p>
+                )}
                 <p style={styles.hint}>
                   {selectedMatch.solo ? "Тип: тренировка (соло)" : `Победитель: ${nameById(selectedMatch.winnerId)}`}
                 </p>
@@ -3246,6 +3368,26 @@ export default function BilliardsTracker() {
                   : `${nameById(victory.winnerId)} проходит в следующий раунд турнира`}
               </div>
             )}
+            {victory.breakerId && (
+              <div style={{ ...styles.breakerBanner, marginTop: "10px" }}>
+                <IconTarget /> Разбивал: <strong>{nameById(victory.breakerId)}</strong>
+                <div style={{ marginTop: "8px" }}>Забил шар при разборе?</div>
+                <div style={{ display: "flex", gap: "8px", marginTop: "6px", justifyContent: "center" }}>
+                  <button
+                    style={{ ...styles.diceBtn, ...(victory.breakerPotted === true ? { background: COLORS.brass, color: "#2C1D08", borderColor: COLORS.brass } : {}) }}
+                    onClick={() => setBreakerPotted(true)}
+                  >
+                    Да
+                  </button>
+                  <button
+                    style={{ ...styles.diceBtn, ...(victory.breakerPotted === false ? { background: COLORS.brass, color: "#2C1D08", borderColor: COLORS.brass } : {}) }}
+                    onClick={() => setBreakerPotted(false)}
+                  >
+                    Нет
+                  </button>
+                </div>
+              </div>
+            )}
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "16px" }}>
               {!victory.bracket && (!victory.series || !victory.series.champion) && !victory.solo && (
                 <button style={{ ...styles.brassBtn, width: "100%" }} onClick={() => startRematch(victory.participants)}>
@@ -3313,6 +3455,15 @@ export default function BilliardsTracker() {
             </button>
           </div>
         </div>
+      )}
+
+      {scoreWheelPid && activeGame && (
+        <ScoreWheel
+          label={`Счёт: ${nameById(scoreWheelPid)}`}
+          value={activeGame.scores[scoreWheelPid] || 0}
+          onChange={(v) => setScore(scoreWheelPid, v)}
+          onClose={() => setScoreWheelPid(null)}
+        />
       )}
     </div>
   );
