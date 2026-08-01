@@ -848,10 +848,13 @@ function makeStyles(dark) {
     },
     navIcon: { fontSize: "19px", lineHeight: 1 },
     main: { padding: "0 16px", maxWidth: "560px", margin: "0 auto" },
+    // Clear glass by default. In dark theme the table photo underneath is
+    // moody/low-contrast, so text over fully clear glass gets hard to read —
+    // there we fall back to the same frosted look as the live score card.
     card: {
-      background: `linear-gradient(135deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.03) 26%, rgba(255,255,255,0) 55%), ${T.cardBg}`,
-      backdropFilter: "blur(14px) saturate(160%)",
-      WebkitBackdropFilter: "blur(14px) saturate(160%)",
+      background: `linear-gradient(135deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.03) 26%, rgba(255,255,255,0) 55%), ${dark ? T.cardBgFrosted : T.cardBg}`,
+      backdropFilter: dark ? "blur(34px) saturate(180%)" : "blur(14px) saturate(160%)",
+      WebkitBackdropFilter: dark ? "blur(34px) saturate(180%)" : "blur(14px) saturate(160%)",
       border: `1px solid ${T.cardBorder}`,
       borderRadius: "18px",
       padding: "18px",
