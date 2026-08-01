@@ -710,7 +710,8 @@ function computeStats(players, matches) {
 function makeStyles(dark) {
   const T = dark
     ? {
-        cardBg: "rgba(20,22,18,0.10)",
+        cardBg: "rgba(20,22,18,0.03)",
+        cardBgFrosted: "rgba(20,22,18,0.30)",
         cardBorder: "rgba(255,255,255,0.20)",
         text: "#F1EAD8",
         sub: "#CDC3A6",
@@ -726,7 +727,8 @@ function makeStyles(dark) {
         modalBg: "#1C1D18",
       }
     : {
-        cardBg: "rgba(255,251,242,0.20)",
+        cardBg: "rgba(255,251,242,0.06)",
+        cardBgFrosted: "rgba(255,251,242,0.42)",
         cardBorder: "rgba(205,187,144,0.85)",
         text: COLORS.ink,
         sub: "#6E6248",
@@ -847,7 +849,22 @@ function makeStyles(dark) {
     navIcon: { fontSize: "19px", lineHeight: 1 },
     main: { padding: "0 16px", maxWidth: "560px", margin: "0 auto" },
     card: {
-      background: `linear-gradient(135deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.05) 26%, rgba(255,255,255,0) 55%), ${T.cardBg}`,
+      background: `linear-gradient(135deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.03) 26%, rgba(255,255,255,0) 55%), ${T.cardBg}`,
+      backdropFilter: "blur(14px) saturate(160%)",
+      WebkitBackdropFilter: "blur(14px) saturate(160%)",
+      border: `1px solid ${T.cardBorder}`,
+      borderRadius: "18px",
+      padding: "18px",
+      marginBottom: "16px",
+      boxShadow:
+        "0 4px 22px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.15), inset 1px 0 0 rgba(255,255,255,0.10), inset -1px 0 0 rgba(255,255,255,0.10)",
+      transition: "background 0.35s ease, backdrop-filter 0.35s ease",
+    },
+    // Same glass treatment but frosted (more opaque + more blur) — used for
+    // the score cards while a match is live, since they carry a lot of
+    // numbers that need to stay readable over a busy table photo.
+    cardFrosted: {
+      background: `linear-gradient(135deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.05) 26%, rgba(255,255,255,0) 55%), ${T.cardBgFrosted}`,
       backdropFilter: "blur(34px) saturate(180%)",
       WebkitBackdropFilter: "blur(34px) saturate(180%)",
       border: `1px solid ${T.cardBorder}`,
@@ -856,6 +873,7 @@ function makeStyles(dark) {
       marginBottom: "16px",
       boxShadow:
         "0 4px 22px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.18), inset 1px 0 0 rgba(255,255,255,0.10), inset -1px 0 0 rgba(255,255,255,0.10)",
+      transition: "background 0.35s ease, backdrop-filter 0.35s ease",
     },
     h2: { fontFamily: "'Fraunces', serif", fontSize: "17px", fontWeight: 600, margin: "0 0 12px", color: dark ? "#E7CE93" : COLORS.wood, borderLeft: `3px solid ${COLORS.brass}`, paddingLeft: "10px" },
     addRow: { display: "flex", gap: "8px" },
@@ -2368,7 +2386,7 @@ export default function BilliardsTracker() {
                     ? activeGame.participants.find((pid) => (activeGame.scores[pid] || 0) >= targetOf(pid))
                     : null;
                 return (
-                <div style={styles.card}>
+                <div style={styles.cardFrosted}>
                   <div style={styles.liveHeader}>
                     <span style={styles.liveDot} />
                     <h2 style={{ ...styles.h2, margin: 0, flex: 1 }}>Партия идёт</h2>
@@ -2526,7 +2544,7 @@ export default function BilliardsTracker() {
               })()}
 
               {activeGame && tieCandidates && (
-                <div style={styles.card}>
+                <div style={styles.cardFrosted}>
                   <h2 style={styles.h2}>Ничья по шарам</h2>
                   <p style={styles.hint}>Счёт равный — выберите победителя партии вручную</p>
                   <div style={styles.chipRow}>
