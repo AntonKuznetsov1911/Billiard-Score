@@ -30,7 +30,6 @@ import {
   buildKolhozSettlement,
 } from "./gameLogic.js";
 import Onboarding from "./Onboarding.jsx";
-import { playSwitchClick } from "./sound.js";
 
 const RatingChart = lazy(() => import("./RatingChart.jsx"));
 
@@ -1082,7 +1081,6 @@ export default function BilliardsTracker() {
   const startGame = () => {
     if (selected.length < 1) return;
     haptic("medium");
-    playSwitchClick();
     setTableLit(true);
     const scores = {};
     selected.forEach((id) => (scores[id] = 0));
@@ -1121,7 +1119,6 @@ export default function BilliardsTracker() {
 
   const startRematch = (participants) => {
     haptic("medium");
-    playSwitchClick();
     setTableLit(true);
     const scores = {};
     participants.forEach((id) => (scores[id] = 0));
@@ -1177,7 +1174,6 @@ export default function BilliardsTracker() {
     const m = bracket.rounds[roundIdx] && bracket.rounds[roundIdx][matchIdx];
     if (!m || !m.a || !m.b || m.winnerId) return;
     haptic("medium");
-    playSwitchClick();
     setTableLit(true);
     updateData((prev) => {
       const mode = (prev.gameType || "russian") === "russian" ? prev.russianMode || "free" : null;
@@ -1593,7 +1589,6 @@ export default function BilliardsTracker() {
 
   const setGameType = (type) => {
     haptic("light");
-    playSwitchClick();
     setTableLit(true);
     updateData((prev) => ({ ...prev, gameType: type }));
   };
