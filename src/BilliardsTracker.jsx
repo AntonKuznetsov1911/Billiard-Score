@@ -29,10 +29,12 @@ import {
   bracketRoundLabel,
   buildKolhozSettlement,
 } from "./gameLogic.js";
+import Onboarding from "./Onboarding.jsx";
 
 const RatingChart = lazy(() => import("./RatingChart.jsx"));
 
 const STORAGE_KEY = "billiards-club-data";
+const ONBOARDING_KEY = "billiards-onboarding-v1";
 
 const FONTS = `
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
@@ -806,6 +808,7 @@ export default function BilliardsTracker() {
   const [historyNameFilter, setHistoryNameFilter] = useState("");
   const [celebrate, setCelebrate] = useState(false);
   const [isOffline, setIsOffline] = useState(typeof navigator !== "undefined" && !navigator.onLine);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [openRuleKey, setOpenRuleKey] = useState(null);
   const [ballValue, setBallValue] = useState(5);
@@ -888,6 +891,24 @@ export default function BilliardsTracker() {
       }
       setLoaded(true);
     })();
+  }, []);
+
+  useEffect(() => {
+    if (!loaded) return;
+    (async () => {
+      try {
+        const res = await window.storage.get(ONBOARDING_KEY, false);
+        if (res && res.value === "1") return; // already seen on this device
+      } catch (e) {
+        // no flag yet — first time here, fall through and show it
+      }
+      setShowOnboarding(true);
+    })();
+  }, [loaded]);
+
+  const dismissOnboarding = useCallback(() => {
+    setShowOnboarding(false);
+    window.storage.set(ONBOARDING_KEY, "1", false).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -2757,6 +2778,9 @@ export default function BilliardsTracker() {
                     <span style={{ ...styles.switchThumb, ...(dark ? styles.switchThumbOn : {}) }} />
                   </button>
                 </div>
+                <button style={{ ...styles.ghostBtn, marginTop: "10px", padding: 0 }} onClick={() => setShowOnboarding(true)}>
+                  ℹ️ Показать обучение ещё раз
+                </button>
               </div>
 
               <div style={styles.card}>
@@ -3246,6 +3270,8 @@ export default function BilliardsTracker() {
           onClose={() => setScoreWheelPid(null)}
         />
       )}
+
+      {showOnboarding && <Onboarding onFinish={dismissOnboarding} />}
     </div>
   );
 }
