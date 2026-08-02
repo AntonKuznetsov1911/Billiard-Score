@@ -377,7 +377,7 @@ function PlayerBall({ color, size = 14 }) {
   );
 }
 
-const WHEEL_ITEM_H = 44;
+const WHEEL_ITEM_H = 52;
 const WHEEL_ROWS = 5;
 const WHEEL_MAX = 150;
 
@@ -451,12 +451,13 @@ const wheelStyles = {
     border: "1px solid rgba(231,206,147,0.4)",
     pointerEvents: "none",
   },
-  list: { overflowY: "scroll", scrollSnapType: "y mandatory" },
+  list: { overflowY: "scroll", scrollSnapType: "y mandatory", overscrollBehavior: "contain" },
   item: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     scrollSnapAlign: "center",
+    scrollSnapStop: "always",
     fontFamily: "'Space Mono', monospace",
     fontSize: "18px",
     fontWeight: 600,
@@ -1019,8 +1020,8 @@ function makeStyles(dark) {
       cursor: "pointer",
     },
     scoreBtns: { display: "flex", gap: "6px" },
-    scoreBtnMinus: { width: "34px", height: "34px", borderRadius: "8px", border: "1px solid #4A6B57", background: "transparent", color: COLORS.cream, fontSize: "16px" },
-    scoreBtnPlus: { padding: "0 12px", height: "34px", borderRadius: "8px", border: "none", background: COLORS.brass, color: "#2C1D08", fontWeight: 700, fontSize: "12.5px" },
+    scoreBtnMinus: { width: "34px", height: "34px", borderRadius: "8px", border: "1px solid #4A6B57", background: "transparent", color: COLORS.cream, fontSize: "16px", touchAction: "manipulation" },
+    scoreBtnPlus: { padding: "0 12px", height: "34px", borderRadius: "8px", border: "none", background: COLORS.brass, color: "#2C1D08", fontWeight: 700, fontSize: "12.5px", touchAction: "manipulation" },
     gameActions: { display: "flex", gap: "10px", marginTop: "16px" },
     finishBtn: { flex: 1, padding: "12px", borderRadius: "10px", border: `1.5px solid ${COLORS.felt}`, background: COLORS.felt, color: COLORS.cream, fontWeight: 700, fontSize: "13px" },
     cancelBtn: { flex: 1, padding: "12px", borderRadius: "10px", border: `1.5px solid ${COLORS.danger}`, background: "transparent", color: COLORS.danger, fontWeight: 600, fontSize: "13px" },
@@ -1078,6 +1079,7 @@ export default function BilliardsTracker() {
   const [seriesPick, setSeriesPick] = useState(1);
   const [scorePulse, setScorePulse] = useState({ pid: null, ts: 0 });
   const [scoreWheelPid, setScoreWheelPid] = useState(null);
+  const lastTapRef = useRef({ key: "", ts: 0 });
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [gameMode, setGameMode] = useState(false);
   const [editMatchId, setEditMatchId] = useState(null);
@@ -1475,6 +1477,13 @@ export default function BilliardsTracker() {
   };
 
   const addPoint = (playerId, delta) => {
+    // Guards against the same tap firing twice/thrice on mobile (touch +
+    // synthetic click both landing, or a stray extra event during the
+    // score-pop animation) without blocking genuinely separate taps.
+    const tapKey = `${playerId}:${delta}`;
+    const now = Date.now();
+    if (lastTapRef.current.key === tapKey && now - lastTapRef.current.ts < 220) return;
+    lastTapRef.current = { key: tapKey, ts: now };
     haptic("light");
     setScorePulse({ pid: playerId, ts: Date.now() });
     updateData((prev) => {
