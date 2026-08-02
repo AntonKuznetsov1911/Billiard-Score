@@ -18,7 +18,7 @@ import {
 } from "./clubSync.js";
 import tableRussianPhoto from "./assets/table-russian.jpg";
 import tablePoolPhoto from "./assets/table-pool.jpg";
-import { COLORS, DICE_PIP_POS, DICE_LAYOUTS, POOL_PALETTE, GAME_TYPES, APP_TITLE, RUSSIAN_MODES, AVATAR_COLORS } from "./constants.js";
+import { COLORS, DICE_PIP_POS, DICE_LAYOUTS, POOL_PALETTE, GAME_TYPES, RUSSIAN_MODES, AVATAR_COLORS } from "./constants.js";
 import {
   uid,
   loadInitial,
@@ -30,6 +30,7 @@ import {
   buildKolhozSettlement,
 } from "./gameLogic.js";
 import Onboarding from "./Onboarding.jsx";
+import { playSwitchClick } from "./sound.js";
 
 const RatingChart = lazy(() => import("./RatingChart.jsx"));
 
@@ -65,47 +66,6 @@ function Die({ value = 1, size = 46 }) {
           </g>
         );
       })}
-    </svg>
-  );
-}
-
-function CueExclamation({ height = 34 }) {
-  const width = Math.round(height * 0.42);
-  const shaftH = 15;
-  const wrapH = 8;
-  return (
-    <svg
-      width={width}
-      height={height}
-      viewBox="0 0 16 40"
-      style={{ display: "inline-block", verticalAlign: "-5px", marginLeft: "3px", transform: "rotate(12deg)" }}
-      aria-hidden="true"
-    >
-      <defs>
-        <linearGradient id="excShaftGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#FBF4E4" />
-          <stop offset="100%" stopColor="#E4D2AE" />
-        </linearGradient>
-        <linearGradient id="excWrapGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#6E2733" />
-          <stop offset="100%" stopColor="#38121A" />
-        </linearGradient>
-        <radialGradient id="excBallGrad" cx="35%" cy="30%" r="75%">
-          <stop offset="0%" stopColor="#FFFDF6" />
-          <stop offset="60%" stopColor="#EDE0C8" />
-          <stop offset="100%" stopColor="#C9B98F" />
-        </radialGradient>
-      </defs>
-      <rect x="6.4" y="0" width="3.2" height={shaftH} rx="1.4" fill="url(#excShaftGrad)" />
-      <rect x="6" y={shaftH} width="4" height={wrapH} rx="1" fill="url(#excWrapGrad)" />
-      {[1.6, 3.6, 5.6].map((dy) => (
-        <React.Fragment key={dy}>
-          <circle cx="7" cy={shaftH + dy} r="0.35" fill="#00000060" />
-          <circle cx="8.6" cy={shaftH + dy + 1} r="0.35" fill="#00000060" />
-        </React.Fragment>
-      ))}
-      <circle cx="8" cy="33" r="6.6" fill="url(#excBallGrad)" stroke="#00000033" strokeWidth="0.6" />
-      <circle cx="6" cy="30.5" r="2" fill="#ffffffaa" />
     </svg>
   );
 }
@@ -486,36 +446,47 @@ function Confetti({ active }) {
     </div>
   );
 }
-function TableArt({ gameType }) {
+function TableArt({ gameType, lit }) {
   const isPool = gameType === "pool";
 
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden" }} aria-hidden="true">
-      {/* real table photo, cross-fades between disciplines */}
+      {/* table starts dim ("light off") and brightens on the first discipline
+          pick, like someone flicking the room lights on */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          backgroundImage: `url(${tableRussianPhoto})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center 42%",
-          opacity: isPool ? 0 : 1,
-          transition: "opacity 0.6s ease",
-          animation: "tableKenBurns 22s ease-in-out infinite alternate",
+          filter: lit ? "brightness(1) saturate(1)" : "brightness(0.22) saturate(0.6)",
+          transition: "filter 0.9s ease",
         }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          backgroundImage: `url(${tablePoolPhoto})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center 42%",
-          opacity: isPool ? 1 : 0,
-          transition: "opacity 0.6s ease",
-          animation: "tableKenBurns 22s ease-in-out infinite alternate",
-        }}
-      />
+      >
+        {/* real table photo, cross-fades between disciplines */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage: `url(${tableRussianPhoto})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center 42%",
+            opacity: isPool ? 0 : 1,
+            transition: "opacity 0.6s ease",
+            animation: "tableKenBurns 22s ease-in-out infinite alternate",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage: `url(${tablePoolPhoto})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center 42%",
+            opacity: isPool ? 1 : 0,
+            transition: "opacity 0.6s ease",
+            animation: "tableKenBurns 22s ease-in-out infinite alternate",
+          }}
+        />
+      </div>
       {/* vignette so header/cards stay legible over a busy photo */}
       <div
         style={{
@@ -600,22 +571,6 @@ function makeStyles(dark) {
       fontSize: "12px",
       fontWeight: 600,
       textAlign: "center",
-    },
-    title: {
-      fontFamily: "'Fraunces', serif",
-      fontOpticalSizing: "auto",
-      fontStyle: "italic",
-      fontWeight: 600,
-      fontSize: "34px",
-      letterSpacing: "0.6px",
-      margin: 0,
-      display: "inline-block",
-      backgroundImage: "linear-gradient(120deg, #FBF0D2 0%, #E7CE93 45%, #C08A3E 75%, #F1DDA6 100%)",
-      backgroundClip: "text",
-      WebkitBackgroundClip: "text",
-      WebkitTextFillColor: "transparent",
-      color: "#F8F1DE",
-      filter: "drop-shadow(0 2px 10px rgba(0,0,0,0.55))",
     },
     gameTypeSwitch: {
       display: "inline-flex",
@@ -809,6 +764,7 @@ export default function BilliardsTracker() {
   const [celebrate, setCelebrate] = useState(false);
   const [isOffline, setIsOffline] = useState(typeof navigator !== "undefined" && !navigator.onLine);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [tableLit, setTableLit] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [openRuleKey, setOpenRuleKey] = useState(null);
   const [ballValue, setBallValue] = useState(5);
@@ -1631,6 +1587,8 @@ export default function BilliardsTracker() {
 
   const setGameType = (type) => {
     haptic("light");
+    playSwitchClick();
+    setTableLit(true);
     updateData((prev) => ({ ...prev, gameType: type }));
   };
 
@@ -1929,7 +1887,7 @@ export default function BilliardsTracker() {
       `}</style>
 
       <div style={styles.outerBg}>
-        <TableArt gameType={data.gameType} />
+        <TableArt gameType={data.gameType} lit={tableLit} />
         <div style={{ ...styles.outerOverlay, ...(activeGame ? { background: "rgba(4,10,7,0.45)" } : {}) }} />
       </div>
 
@@ -1941,10 +1899,6 @@ export default function BilliardsTracker() {
         )}
         {!immersive && (
           <header style={styles.header} className="no-print">
-            <h1 style={styles.title} key={data.gameType || "russian"} className="tab-fade">
-              {APP_TITLE[data.gameType || "russian"]}
-              <CueExclamation height={30} />
-            </h1>
             <div style={styles.gameTypeSwitch} role="tablist" aria-label="Дисциплина">
               <button
                 type="button"
