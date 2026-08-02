@@ -18,6 +18,17 @@ import {
 } from "./clubSync.js";
 import tableRussianPhoto from "./assets/table-russian.jpg";
 import tablePoolPhoto from "./assets/table-pool.jpg";
+import { COLORS, DICE_PIP_POS, DICE_LAYOUTS, POOL_PALETTE, GAME_TYPES, APP_TITLE, RUSSIAN_MODES, AVATAR_COLORS } from "./constants.js";
+import {
+  uid,
+  loadInitial,
+  normalizeData,
+  formatDuration,
+  computeStats,
+  buildBracketRounds,
+  bracketRoundLabel,
+  buildKolhozSettlement,
+} from "./gameLogic.js";
 
 const RatingChart = lazy(() => import("./RatingChart.jsx"));
 
@@ -26,37 +37,6 @@ const STORAGE_KEY = "billiards-club-data";
 const FONTS = `
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
 `;
-
-const COLORS = {
-  felt: "#0F3D2E",
-  feltDark: "#0A2B20",
-  wood: "#6B4226",
-  woodLight: "#8A5A34",
-  cream: "#F3EBDA",
-  chalk: "#3D6E8F",
-  brass: "#C08A3E",
-  ink: "#1B1712",
-  danger: "#B5473A",
-};
-
-const DICE_PIP_POS = {
-  tl: [26, 26],
-  tr: [74, 26],
-  ml: [26, 50],
-  mr: [74, 50],
-  bl: [26, 74],
-  br: [74, 74],
-  c: [50, 50],
-};
-
-const DICE_LAYOUTS = {
-  1: ["c"],
-  2: ["tl", "br"],
-  3: ["tl", "c", "br"],
-  4: ["tl", "tr", "bl", "br"],
-  5: ["tl", "tr", "c", "bl", "br"],
-  6: ["tl", "tr", "ml", "mr", "bl", "br"],
-};
 
 function Die({ value = 1, size = 46 }) {
   const pips = DICE_LAYOUTS[value] || DICE_LAYOUTS[1];
@@ -86,127 +66,6 @@ function Die({ value = 1, size = 46 }) {
     </svg>
   );
 }
-
-const POOL_PALETTE = [
-  { c: "#FFD400", t: "#1B1712" },
-  { c: "#0057B8", t: "#fff" },
-  { c: "#E4032E", t: "#fff" },
-  { c: "#5B2C82", t: "#fff" },
-  { c: "#FF7F11", t: "#1B1712" },
-  { c: "#0B7A3E", t: "#fff" },
-  { c: "#7A1F2B", t: "#fff" },
-  { c: "#111111", t: "#fff" },
-  { c: "#FFD400", t: "#1B1712" },
-  { c: "#0057B8", t: "#fff" },
-  { c: "#E4032E", t: "#fff" },
-  { c: "#5B2C82", t: "#fff" },
-  { c: "#FF7F11", t: "#1B1712" },
-  { c: "#0B7A3E", t: "#fff" },
-  { c: "#7A1F2B", t: "#fff" },
-];
-
-const GAME_TYPES = {
-  russian: { label: "Русский бильярд" },
-  pool: { label: "Пул" },
-};
-
-const APP_TITLE = {
-  russian: "Твой бильярд",
-  pool: "Your Pool",
-};
-
-const TWO_RAILS_RULE =
-  "Правило двух бортов: если после удара битком по прицельному шару ни один шар не забит, удар засчитывается, только если выполнено одно из: любой шар (биток или прицельный) коснулся двух бортов; два разных шара коснулись по одному борту каждый; шар коснулся борта и затем пересёк среднюю линию стола (или наоборот — сначала пересёк линию, потом коснулся борта). Иначе — нарушение (в обиходе «недокат»).";
-
-const COMMON_FOULS = [
-  "Касание любого шара на столе рукой, кием, мелом, машинкой для мела или одеждой — нарушение. Поправлять можно только биток, пока он не введён в игру (не сделан первый удар по нему).",
-  "Двойной удар: если наклейка кия повторно касается уже начавшего движение битка — нарушение.",
-  "Игрок обязан касаться пола хотя бы одной ногой в момент удара — иначе нарушение.",
-  "Удар, после которого биток не коснулся ни одного прицельного шара («пустой» удар/недоезд) — нарушение.",
-  "Вылет любого шара за борт стола — нарушение, даже если шар задел кий или одежду игрока над бортом.",
-  "Пропих (толчок): биток и прицельный шар соприкасаются дольше короткого удара, кий «толкает» шар вместо удара — нарушение.",
-];
-
-const RUSSIAN_MODES = {
-  free: {
-    name: "Свободная пирамида",
-    alias: "Американка",
-    target: 8,
-    unit: "шаров",
-    rules: [
-      "Играть можно любым шаром по любому шару.",
-      "Засчитывается любой правильно забитый шар.",
-      "Побеждает тот, кто первым забьёт 8 шаров.",
-      "Самый популярный любительский вариант.",
-      TWO_RAILS_RULE,
-      ...COMMON_FOULS,
-      "При нарушении право хода переходит к сопернику; во многих клубах сопернику дополнительно присуждается очко/право забрать шар — уточняйте местные правила.",
-    ],
-  },
-  combined: {
-    name: "Комбинированная пирамида",
-    alias: "Московская",
-    target: 8,
-    unit: "шаров",
-    rules: [
-      "Бить можно только битком.",
-      "После каждого забитого шара игрок выставляет любой шар на отметку и продолжает серию.",
-      "Требует более точной позиционной игры.",
-      "Побеждает тот, кто первым забьёт 8 шаров.",
-      TWO_RAILS_RULE,
-      ...COMMON_FOULS,
-      "При нарушении соперник, помимо права хода, может забрать себе один шар со стола по своему выбору («штрафной шар»).",
-    ],
-  },
-  dynamic: {
-    name: "Динамичная пирамида",
-    alias: "Невская",
-    target: 8,
-    unit: "шаров",
-    rules: [
-      "После забитого шара игрок снимает его со стола и выставляет биток из дома.",
-      "Игра более быстрая и атакующая.",
-      "Побеждает тот, кто первым забьёт 8 шаров.",
-      TWO_RAILS_RULE,
-      ...COMMON_FOULS,
-      "При нарушении право хода переходит к сопернику.",
-    ],
-  },
-  classic: {
-    name: "Классическая пирамида",
-    alias: "71 очко",
-    target: 71,
-    unit: "очков",
-    rules: [
-      "Профессиональная дисциплина.",
-      "Каждый шар имеет стоимость в очках, равную его номеру; шар с номером 1 (туз) стоит 11 очков.",
-      "Для победы необходимо набрать 71 очко.",
-      "Самая сложная разновидность русского бильярда.",
-      TWO_RAILS_RULE,
-      ...COMMON_FOULS,
-      "Свой шар (биток), забитый в лузу, — тоже нарушение.",
-      "За любое нарушение у нарушителя вычитается 5 очков, а сопернику прибавляется 5 очков. Несколько нарушений в одном ударе штрафуются только один раз.",
-      "Если оба игрока набрали по 70 очков, последний забитый прицельный шар ставится обратно на стол, и игра продолжается на решающее очко.",
-    ],
-  },
-  kolhoz: {
-    name: "Колхоз",
-    alias: "Колхоз",
-    target: null,
-    unit: "очков",
-    minPlayers: 3,
-    rules: [
-      "Коллективная игра для 3 и более игроков — по итогу партии каждый рассчитывается с каждым.",
-      "Забитый шар не выбывает из игры: очки записываются игроку, шар возвращается на стол.",
-      "Отмечайте номинал забитого шара для того, кто его закатил.",
-      "Касание любого шара рукой, кием или одеждой — тоже нарушение, как и в остальных разновидностях пирамиды.",
-      "Штраф за нарушение обычно равен номиналу разыгрываемого (заказанного) шара и вычитается из очков нарушителя.",
-      "Точные номиналы шаров и штрафы отличаются от клуба к клубу — начните с любых значений и подстройте под свои правила игры.",
-      "Партия завершается вручную, когда компания решает закончить, а не по достижении цели.",
-      "По итогу партии для каждой пары игроков считается разница очков — это и есть результат между ними.",
-    ],
-  },
-};
 
 function CueExclamation({ height = 34 }) {
   const width = Math.round(height * 0.42);
@@ -366,8 +225,6 @@ function EmptyState({ text }) {
   );
 }
 
-const AVATAR_COLORS = ["#E4032E", "#0057B8", "#F0B429", "#5B2C82", "#0B7A3E", "#FF7F11", "#3D6E8F", "#7A1F2B", "#20B2AA", "#C08A3E"];
-
 function PlayerBall({ color, size = 14 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" style={{ display: "inline-block", verticalAlign: "-2px" }} aria-hidden="true">
@@ -511,43 +368,6 @@ function IconDice({ size = 14, color = COLORS.chalk }) {
       <circle cx="12" cy="12" r="1.6" fill={color} />
     </svg>
   );
-}
-
-function buildBracketRounds(participants) {
-  const rounds = [];
-  const firstRound = [];
-  for (let i = 0; i < participants.length; i += 2) {
-    firstRound.push({ a: participants[i], b: participants[i + 1], winnerId: null });
-  }
-  rounds.push(firstRound);
-  let roundSize = firstRound.length;
-  while (roundSize > 1) {
-    const nextRound = [];
-    for (let i = 0; i < roundSize / 2; i++) nextRound.push({ a: null, b: null, winnerId: null });
-    rounds.push(nextRound);
-    roundSize = nextRound.length;
-  }
-  return rounds;
-}
-
-function bracketRoundLabel(ri, total) {
-  const fromEnd = total - 1 - ri;
-  if (fromEnd === 0) return "Финал";
-  if (fromEnd === 1) return "Полуфинал";
-  if (fromEnd === 2) return "Четвертьфинал";
-  return `Раунд ${ri + 1}`;
-}
-
-function buildKolhozSettlement(participants, scores) {
-  const matrix = {};
-  participants.forEach((a) => {
-    matrix[a] = {};
-    participants.forEach((b) => {
-      if (a === b) return;
-      matrix[a][b] = (scores[a] || 0) - (scores[b] || 0);
-    });
-  });
-  return matrix;
 }
 
 const kolhozCellStyle = {
@@ -707,106 +527,6 @@ function TableArt({ gameType }) {
   );
 }
 
-function uid() {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-}
-
-function loadInitial() {
-  return {
-    players: [],
-    matches: [],
-    activeGame: null,
-    activeSeries: null,
-    activeBracket: null,
-    theme: "dark",
-    gameType: "russian",
-    russianMode: "free",
-    updatedAt: 0,
-  };
-}
-
-function normalizeData(parsed) {
-  return {
-    players: (Array.isArray(parsed.players) ? parsed.players : []).map((p, i) => ({
-      ...p,
-      color: p.color || AVATAR_COLORS[i % AVATAR_COLORS.length],
-    })),
-    matches: Array.isArray(parsed.matches) ? parsed.matches : [],
-    activeGame: parsed.activeGame || null,
-    activeSeries: parsed.activeSeries || null,
-    activeBracket: parsed.activeBracket || null,
-    theme: parsed.theme === "light" ? "light" : "dark",
-    gameType: parsed.gameType === "pool" ? "pool" : "russian",
-    russianMode: RUSSIAN_MODES[parsed.russianMode] ? parsed.russianMode : "free",
-    updatedAt: parsed.updatedAt || 0,
-  };
-}
-
-function formatDuration(ms) {
-  if (!ms || ms < 0) return "—";
-  const totalMin = Math.max(1, Math.round(ms / 60000));
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  return h > 0 ? `${h} ч ${m} мин` : `${m} мин`;
-}
-
-function computeStats(players, matches) {
-  const byPlayer = {};
-  players.forEach((p) => (byPlayer[p.id] = []));
-  matches.forEach((m) => {
-    m.participants.forEach((pid) => {
-      if (byPlayer[pid]) byPlayer[pid].push(m);
-    });
-  });
-  return players
-    .map((p) => {
-      const pMatches = (byPlayer[p.id] || [])
-        .slice()
-        .sort((a, b) => new Date(a.date) - new Date(b.date));
-      let wins = 0;
-      let totalBalls = 0;
-      let bestStreak = 0;
-      let run = 0;
-      let soloGames = 0;
-      pMatches.forEach((m) => {
-        totalBalls += (m.scores && m.scores[p.id]) || 0;
-        if (m.solo) {
-          soloGames += 1;
-          return; // practice: no effect on wins/streaks
-        }
-        const won = m.winnerId === p.id;
-        if (won) {
-          wins += 1;
-          run += 1;
-          bestStreak = Math.max(bestStreak, run);
-        } else {
-          run = 0;
-        }
-      });
-      const games = pMatches.length;
-      const vsGames = games - soloGames;
-      const losses = vsGames - wins;
-      let currentStreak = 0;
-      for (let i = pMatches.length - 1; i >= 0; i--) {
-        if (pMatches[i].solo) continue;
-        if (pMatches[i].winnerId === p.id) currentStreak += 1;
-        else break;
-      }
-      return {
-        id: p.id,
-        name: p.name,
-        games,
-        wins,
-        losses,
-        winPct: vsGames ? Math.round((wins / vsGames) * 100) : 0,
-        currentStreak,
-        bestStreak,
-        totalBalls,
-        avgBalls: games ? totalBalls / games : 0,
-      };
-    })
-    .sort((a, b) => b.wins - a.wins || b.winPct - a.winPct);
-}
 
 function makeStyles(dark) {
   const T = dark
@@ -864,6 +584,20 @@ function makeStyles(dark) {
       padding: "calc(16px + env(safe-area-inset-top)) 20px 18px",
       textAlign: "center",
       background: "radial-gradient(ellipse 70% 120% at 50% 35%, rgba(4,12,8,0.5) 0%, rgba(4,12,8,0.0) 72%)",
+    },
+    offlineBanner: {
+      position: "relative",
+      zIndex: 5,
+      margin: "calc(8px + env(safe-area-inset-top)) 16px 0",
+      padding: "8px 12px",
+      borderRadius: "10px",
+      background: "rgba(181,71,58,0.85)",
+      backdropFilter: "blur(10px)",
+      WebkitBackdropFilter: "blur(10px)",
+      color: "#FBEFE9",
+      fontSize: "12px",
+      fontWeight: 600,
+      textAlign: "center",
     },
     title: {
       fontFamily: "'Fraunces', serif",
@@ -1038,7 +772,7 @@ function makeStyles(dark) {
     historyDate: { fontFamily: "'Space Mono', monospace", fontSize: "11px", color: T.sub, marginTop: "2px" },
     deleteBtn: { border: "none", background: "transparent", color: "#B08F5A", fontSize: "18px", padding: "4px 8px" },
     resetBtn: { display: "block", width: "100%", padding: "10px 18px", borderRadius: "8px", border: "1px solid #B5473A", background: "transparent", color: "#B5473A", fontSize: "13px", fontWeight: 600 },
-    searchRow: { display: "flex", gap: "8px", alignItems: "center", marginBottom: "10px" },
+    searchRow: { display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", marginBottom: "10px" },
     rankList: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "8px" },
     rankItem: { display: "flex", alignItems: "center", gap: "10px", padding: "8px 4px", borderBottom: `1px solid ${T.rowBorder}` },
     rankMedal: { width: "26px", textAlign: "center", fontSize: "15px" },
@@ -1069,7 +803,9 @@ export default function BilliardsTracker() {
   const [diceRolling, setDiceRolling] = useState(false);
   const [selectedMatchId, setSelectedMatchId] = useState(null);
   const [dateFilter, setDateFilter] = useState("");
+  const [historyNameFilter, setHistoryNameFilter] = useState("");
   const [celebrate, setCelebrate] = useState(false);
+  const [isOffline, setIsOffline] = useState(typeof navigator !== "undefined" && !navigator.onLine);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [openRuleKey, setOpenRuleKey] = useState(null);
   const [ballValue, setBallValue] = useState(5);
@@ -1094,6 +830,17 @@ export default function BilliardsTracker() {
   const [clubError, setClubError] = useState("");
   const [clubCodeInput, setClubCodeInput] = useState("");
   const [clubNameInput, setClubNameInput] = useState("");
+
+  useEffect(() => {
+    const goOnline = () => setIsOffline(false);
+    const goOffline = () => setIsOffline(true);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
 
   useEffect(() => {
     const tg = getTG();
@@ -1884,9 +1631,16 @@ export default function BilliardsTracker() {
   );
 
   const filteredHistory = useMemo(() => {
-    if (!dateFilter) return sortedHistory;
-    return sortedHistory.filter((m) => new Date(m.date).toISOString().slice(0, 10) === dateFilter);
-  }, [sortedHistory, dateFilter]);
+    let list = sortedHistory;
+    if (dateFilter) {
+      list = list.filter((m) => new Date(m.date).toISOString().slice(0, 10) === dateFilter);
+    }
+    const q = historyNameFilter.trim().toLowerCase();
+    if (q) {
+      list = list.filter((m) => m.participants.some((pid) => (nameById(pid) || "").toLowerCase().includes(q)));
+    }
+    return list;
+  }, [sortedHistory, dateFilter, historyNameFilter, nameById]);
 
   const chartData = useMemo(
     () => stats.map((s) => ({ name: s.name, Победы: s.wins, Поражения: s.losses, "% побед": s.winPct })),
@@ -2159,6 +1913,11 @@ export default function BilliardsTracker() {
       </div>
 
       <div style={styles.page}>
+        {isOffline && (
+          <div style={styles.offlineBanner} className="no-print">
+            📡 Нет соединения — партии сохраняются на устройстве и синхронизируются, когда сеть вернётся
+          </div>
+        )}
         {!immersive && (
           <header style={styles.header} className="no-print">
             <h1 style={styles.title} key={data.gameType || "russian"} className="tab-fade">
@@ -2899,9 +2658,22 @@ export default function BilliardsTracker() {
             <section style={styles.card}>
               <h2 style={styles.h2}>История партий</h2>
               <div style={styles.searchRow} className="no-print">
+                <input
+                  type="text"
+                  placeholder="Поиск по игроку"
+                  value={historyNameFilter}
+                  onChange={(e) => setHistoryNameFilter(e.target.value)}
+                  style={styles.input}
+                />
                 <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} style={styles.input} />
-                {dateFilter && (
-                  <button style={styles.diceBtn} onClick={() => setDateFilter("")}>
+                {(dateFilter || historyNameFilter) && (
+                  <button
+                    style={styles.diceBtn}
+                    onClick={() => {
+                      setDateFilter("");
+                      setHistoryNameFilter("");
+                    }}
+                  >
                     Сбросить
                   </button>
                 )}
