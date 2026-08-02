@@ -1082,6 +1082,8 @@ export default function BilliardsTracker() {
   const startGame = () => {
     if (selected.length < 1) return;
     haptic("medium");
+    playSwitchClick();
+    setTableLit(true);
     const scores = {};
     selected.forEach((id) => (scores[id] = 0));
     const breakerId = breakerInfo.breakerId || null;
@@ -1119,6 +1121,8 @@ export default function BilliardsTracker() {
 
   const startRematch = (participants) => {
     haptic("medium");
+    playSwitchClick();
+    setTableLit(true);
     const scores = {};
     participants.forEach((id) => (scores[id] = 0));
     updateData((prev) => {
@@ -1173,6 +1177,8 @@ export default function BilliardsTracker() {
     const m = bracket.rounds[roundIdx] && bracket.rounds[roundIdx][matchIdx];
     if (!m || !m.a || !m.b || m.winnerId) return;
     haptic("medium");
+    playSwitchClick();
+    setTableLit(true);
     updateData((prev) => {
       const mode = (prev.gameType || "russian") === "russian" ? prev.russianMode || "free" : null;
       return {
