@@ -26,7 +26,7 @@ describe("loadInitial", () => {
     expect(initial.players).toEqual([]);
     expect(initial.matches).toEqual([]);
     expect(initial.activeGame).toBeNull();
-    expect(initial.theme).toBe("dark");
+    expect(initial.theme).toBe("light");
     expect(initial.gameType).toBe("russian");
     expect(initial.russianMode).toBe("free");
   });
@@ -37,7 +37,7 @@ describe("normalizeData", () => {
     const out = normalizeData({ players: [{ id: "p1", name: "Anton" }] });
     expect(out.players[0].color).toBeTruthy();
     expect(out.matches).toEqual([]);
-    expect(out.theme).toBe("dark");
+    expect(out.theme).toBe("light");
     expect(out.russianMode).toBe("free");
   });
 
@@ -55,6 +55,13 @@ describe("normalizeData", () => {
   it("falls back to the free russian mode for an unknown mode key", () => {
     expect(normalizeData({ russianMode: "classic" }).russianMode).toBe("classic");
     expect(normalizeData({ russianMode: "made-up" }).russianMode).toBe("free");
+  });
+
+  it("defaults to light theme unless dark was explicitly saved", () => {
+    expect(normalizeData({ theme: "dark" }).theme).toBe("dark");
+    expect(normalizeData({ theme: "light" }).theme).toBe("light");
+    expect(normalizeData({ theme: "nonsense" }).theme).toBe("light");
+    expect(normalizeData({}).theme).toBe("light");
   });
 });
 
