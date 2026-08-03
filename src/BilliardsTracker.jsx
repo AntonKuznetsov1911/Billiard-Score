@@ -503,7 +503,7 @@ function TableArt({ gameType, lit }) {
 function makeStyles(dark) {
   const T = dark
     ? {
-        cardBg: "rgba(20,22,18,0.015)",
+        cardBg: "rgba(20,22,18,0)",
         cardBgFrosted: "rgba(20,22,18,0.18)",
         cardBorder: "rgba(255,255,255,0.20)",
         text: "#F1EAD8",
@@ -512,7 +512,7 @@ function makeStyles(dark) {
         inputBorder: "rgba(255,255,255,0.20)",
         chipBg: "rgba(255,255,255,0.08)",
         chipBorder: "rgba(255,255,255,0.20)",
-        navBg: "rgba(20,22,18,0.09)",
+        navBg: "rgba(20,22,18,0)",
         navText: "#F1E9D2",
         headerBg: "rgba(10,20,15,0.22)",
         tableBorder: "rgba(255,255,255,0.18)",
@@ -520,7 +520,7 @@ function makeStyles(dark) {
         modalBg: "#1C1D18",
       }
     : {
-        cardBg: "rgba(255,251,242,0.03)",
+        cardBg: "rgba(255,251,242,0)",
         cardBgFrosted: "rgba(255,251,242,0.26)",
         cardBorder: "rgba(205,187,144,0.85)",
         text: COLORS.ink,
@@ -529,7 +529,7 @@ function makeStyles(dark) {
         inputBorder: "#D8CBA9",
         chipBg: "rgba(239,230,204,0.55)",
         chipBorder: "#DCC98F",
-        navBg: "rgba(246,240,226,0.14)",
+        navBg: "rgba(246,240,226,0)",
         navText: COLORS.wood,
         headerBg: "rgba(10,20,15,0.16)",
         tableBorder: COLORS.wood,
@@ -564,8 +564,6 @@ function makeStyles(dark) {
       padding: "8px 12px",
       borderRadius: "10px",
       background: "rgba(181,71,58,0.85)",
-      backdropFilter: "blur(10px)",
-      WebkitBackdropFilter: "blur(10px)",
       color: "#FBEFE9",
       fontSize: "12px",
       fontWeight: 600,
@@ -576,11 +574,8 @@ function makeStyles(dark) {
       marginTop: "10px",
       padding: "3px",
       borderRadius: "999px",
-      background: "linear-gradient(135deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 40%, transparent 65%), rgba(10,10,8,0.10)",
+      background: "rgba(10,10,8,0)",
       border: "1px solid rgba(255,255,255,0.28)",
-      backdropFilter: "blur(18px) saturate(170%)",
-      WebkitBackdropFilter: "blur(18px) saturate(170%)",
-      boxShadow: "0 2px 12px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.35)",
     },
     gameTypeSwitchBtn: {
       display: "inline-flex",
@@ -600,7 +595,6 @@ function makeStyles(dark) {
     gameTypeSwitchBtnActive: {
       background: "linear-gradient(135deg, #D9A354 0%, #A9701F 100%)",
       color: "#241705",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
     },
     bottomNav: {
       position: "fixed",
@@ -611,11 +605,8 @@ function makeStyles(dark) {
       display: "flex",
       gap: "2px",
       padding: "8px 8px calc(8px + env(safe-area-inset-bottom))",
-      background: `linear-gradient(180deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.02) 40%, transparent 100%), ${T.navBg}`,
-      backdropFilter: "blur(28px) saturate(180%)",
-      WebkitBackdropFilter: "blur(28px) saturate(180%)",
+      background: T.navBg,
       borderTop: `1px solid ${T.cardBorder}`,
-      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.30)",
     },
     bottomNavBtn: {
       flex: 1,
@@ -639,33 +630,23 @@ function makeStyles(dark) {
     },
     navIcon: { fontSize: "19px", lineHeight: 1 },
     main: { padding: "0 16px", maxWidth: "560px", margin: "0 auto" },
-    // Clear glass everywhere, in both themes — no matte/frosted fallback.
+    // Fully clear, no blur, no highlight sheen — plain transparent panels.
     card: {
-      background: `linear-gradient(135deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.03) 26%, rgba(255,255,255,0) 55%), ${T.cardBg}`,
-      backdropFilter: "blur(16px) saturate(160%)",
-      WebkitBackdropFilter: "blur(16px) saturate(160%)",
+      background: T.cardBg,
       border: `1px solid ${T.cardBorder}`,
       borderRadius: "18px",
       padding: "18px",
       marginBottom: "16px",
-      boxShadow:
-        "0 4px 22px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.15), inset 1px 0 0 rgba(255,255,255,0.10), inset -1px 0 0 rgba(255,255,255,0.10)",
-      transition: "background 0.35s ease, backdrop-filter 0.35s ease",
     },
     // Frosted only in dark theme (where the photo is moodier and text needs
     // the extra contrast) — clear glass in light theme like everything else.
     // Wraps the live-match and tie-break cards.
     cardFrosted: {
-      background: `linear-gradient(135deg, rgba(255,255,255,0.24) 0%, rgba(255,255,255,0.05) 26%, rgba(255,255,255,0) 55%), ${dark ? T.cardBgFrosted : T.cardBg}`,
-      backdropFilter: dark ? "blur(34px) saturate(180%)" : "blur(16px) saturate(160%)",
-      WebkitBackdropFilter: dark ? "blur(34px) saturate(180%)" : "blur(16px) saturate(160%)",
+      background: dark ? T.cardBgFrosted : T.cardBg,
       border: `1px solid ${T.cardBorder}`,
       borderRadius: "18px",
       padding: "18px",
       marginBottom: "16px",
-      boxShadow:
-        "0 4px 22px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.18), inset 1px 0 0 rgba(255,255,255,0.10), inset -1px 0 0 rgba(255,255,255,0.10)",
-      transition: "background 0.35s ease, backdrop-filter 0.35s ease",
     },
     h2: { fontFamily: "'Fraunces', serif", fontSize: "17px", fontWeight: 600, margin: "0 0 12px", color: dark ? "#E7CE93" : COLORS.wood, borderLeft: `3px solid ${COLORS.brass}`, paddingLeft: "10px" },
     addRow: { display: "flex", gap: "8px" },
@@ -681,8 +662,6 @@ function makeStyles(dark) {
       padding: "6px 6px 6px 12px",
       borderRadius: "999px",
       background: T.cardBg,
-      backdropFilter: "blur(16px) saturate(160%)",
-      WebkitBackdropFilter: "blur(16px) saturate(160%)",
       border: `1px solid ${T.chipBorder}`,
       fontSize: "13.5px",
       fontWeight: 500,
@@ -695,8 +674,6 @@ function makeStyles(dark) {
       borderRadius: "999px",
       border: `1.5px solid ${COLORS.chalk}`,
       background: T.cardBg,
-      backdropFilter: "blur(16px) saturate(160%)",
-      WebkitBackdropFilter: "blur(16px) saturate(160%)",
       color: COLORS.chalk,
       fontWeight: 600,
       fontSize: "13px",
@@ -708,8 +685,6 @@ function makeStyles(dark) {
       borderRadius: "8px",
       border: `1.5px solid ${COLORS.chalk}`,
       background: T.cardBg,
-      backdropFilter: "blur(16px) saturate(160%)",
-      WebkitBackdropFilter: "blur(16px) saturate(160%)",
       color: COLORS.chalk,
       fontWeight: 700,
       fontSize: "12.5px",
@@ -724,16 +699,14 @@ function makeStyles(dark) {
       marginTop: "12px",
       padding: "10px 12px",
       borderRadius: "10px",
-      background: `linear-gradient(135deg, ${dark ? "rgba(192,138,62,0.14)" : "rgba(251,239,207,0.28)"} 0%, transparent 70%), ${T.cardBg}`,
-      backdropFilter: "blur(16px) saturate(160%)",
-      WebkitBackdropFilter: "blur(16px) saturate(160%)",
+      background: T.cardBg,
       border: `1px solid ${dark ? "rgba(231,206,147,0.35)" : "#E7CE93"}`,
       color: T.text,
       fontSize: "13px",
       textAlign: "center",
     },
     liveHeader: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" },
-    liveDot: { width: "9px", height: "9px", borderRadius: "50%", background: "#3E9B5C", boxShadow: "0 0 0 3px rgba(62,155,92,0.2)" },
+    liveDot: { width: "9px", height: "9px", borderRadius: "50%", background: "#3E9B5C" },
     scoreboard: { display: "flex", flexDirection: "column", gap: "10px", marginTop: "14px" },
     scoreCard: {
       display: "flex",
@@ -742,8 +715,6 @@ function makeStyles(dark) {
       padding: "12px 14px",
       borderRadius: "12px",
       background: dark ? "rgba(10,32,24,0.35)" : T.cardBg,
-      backdropFilter: "blur(18px) saturate(160%)",
-      WebkitBackdropFilter: "blur(18px) saturate(160%)",
       border: `1px solid ${dark ? "rgba(255,255,255,0.10)" : T.cardBorder}`,
     },
     scoreName: { color: T.text, fontWeight: 600, fontSize: "14px", flex: 1 },
@@ -3114,7 +3085,6 @@ export default function BilliardsTracker() {
             background: `linear-gradient(180deg, ${
               victory.solo ? COLORS.brass : playerColor(victory.winnerId)
             }cc 0%, rgba(10,43,32,0.97) 68%)`,
-            backdropFilter: "blur(6px)",
             animation: "fadeIn 0.3s ease",
           }}
         >
