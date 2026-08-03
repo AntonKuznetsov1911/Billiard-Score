@@ -18,6 +18,7 @@ import {
 } from "./clubSync.js";
 import tableRussianPhoto from "./assets/table-russian.jpg";
 import tablePoolPhoto from "./assets/table-pool.jpg";
+import tableOffPhoto from "./assets/table-off.jpg";
 import { COLORS, DICE_PIP_POS, DICE_LAYOUTS, POOL_PALETTE, GAME_TYPES, RUSSIAN_MODES, AVATAR_COLORS } from "./constants.js";
 import {
   uid,
@@ -445,47 +446,79 @@ function Confetti({ active }) {
     </div>
   );
 }
+function DisciplineGate({ onPick }) {
+  return (
+    <div style={gateStyles.wrap} className="no-print">
+      <p style={gateStyles.prompt}>Во что будете играть?</p>
+      <div style={gateStyles.options}>
+        <button style={gateStyles.option} onClick={() => onPick("russian")}>
+          <GameIcon type="russian" size={30} />
+          <span>Русский бильярд</span>
+        </button>
+        <button style={gateStyles.option} onClick={() => onPick("pool")}>
+          <GameIcon type="pool" size={30} />
+          <span>Pool</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const gateStyles = {
+  wrap: {
+    minHeight: "calc(100vh - 40px)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "22px",
+    padding: "calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom))",
+    textAlign: "center",
+  },
+  prompt: {
+    fontFamily: "'Fraunces', serif",
+    fontStyle: "italic",
+    fontSize: "22px",
+    fontWeight: 600,
+    color: "#F8F1DE",
+    margin: 0,
+    textShadow: "0 2px 10px rgba(0,0,0,0.55)",
+  },
+  options: { display: "flex", flexDirection: "column", gap: "14px", width: "100%", maxWidth: "300px" },
+  option: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "10px",
+    padding: "16px 20px",
+    borderRadius: "14px",
+    border: "1.5px solid rgba(241,233,210,0.55)",
+    background: "rgba(20,22,18,0)",
+    color: "#F1E9D2",
+    fontWeight: 700,
+    fontSize: "15px",
+    cursor: "pointer",
+  },
+};
+
 function TableArt({ gameType, lit }) {
   const isPool = gameType === "pool";
+  const layerStyle = {
+    position: "absolute",
+    inset: 0,
+    backgroundSize: "cover",
+    backgroundPosition: "center 42%",
+    transition: "opacity 0.6s ease",
+    animation: "tableKenBurns 22s ease-in-out infinite alternate",
+  };
 
   return (
     <div style={{ position: "absolute", inset: 0, overflow: "hidden" }} aria-hidden="true">
-      {/* table starts dim ("light off") and brightens on the first discipline
-          pick, like someone flicking the room lights on */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          filter: lit ? "brightness(1) saturate(1)" : "brightness(0.22) saturate(0.6)",
-          transition: "filter 0.9s ease",
-        }}
-      >
-        {/* real table photo, cross-fades between disciplines */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            backgroundImage: `url(${tableRussianPhoto})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center 42%",
-            opacity: isPool ? 0 : 1,
-            transition: "opacity 0.6s ease",
-            animation: "tableKenBurns 22s ease-in-out infinite alternate",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            backgroundImage: `url(${tablePoolPhoto})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center 42%",
-            opacity: isPool ? 1 : 0,
-            transition: "opacity 0.6s ease",
-            animation: "tableKenBurns 22s ease-in-out infinite alternate",
-          }}
-        />
-      </div>
+      {/* real table photos: a dim "lights off" shot by default, cross-fading
+          to the lit russian/pool shot once a discipline is picked */}
+      <div style={{ ...layerStyle, backgroundImage: `url(${tableOffPhoto})`, opacity: lit ? 0 : 1 }} />
+      <div style={{ ...layerStyle, backgroundImage: `url(${tableRussianPhoto})`, opacity: lit && !isPool ? 1 : 0 }} />
+      <div style={{ ...layerStyle, backgroundImage: `url(${tablePoolPhoto})`, opacity: lit && isPool ? 1 : 0 }} />
       {/* vignette so header/cards stay legible over a busy photo */}
       <div
         style={{
@@ -882,6 +915,11 @@ export default function BilliardsTracker() {
       }
       setShowOnboarding(true);
     })();
+  }, [loaded]);
+
+  useEffect(() => {
+    if (loaded && data.activeGame) setTableLit(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
 
   const dismissOnboarding = useCallback(() => {
@@ -1823,6 +1861,10 @@ export default function BilliardsTracker() {
   const styles = makeStyles(dark);
   const isKolhoz = (data.gameType || "russian") === "russian" && (data.russianMode || "free") === "kolhoz";
   const immersive = !!(activeGame && gameMode);
+  // Show the "what are we playing?" gate until a discipline is actively
+  // picked this session — skip it outright if a match is already underway
+  // (returning to an in-progress game shouldn't ask again).
+  const showDisciplineGate = !tableLit && !activeGame;
 
   return (
     <div>
@@ -1921,6 +1963,10 @@ export default function BilliardsTracker() {
             📡 Нет соединения — партии сохраняются на устройстве и синхронизируются, когда сеть вернётся
           </div>
         )}
+        {showDisciplineGate ? (
+          <DisciplineGate onPick={setGameType} />
+        ) : (
+          <>
         {!immersive && (
           <header style={styles.header} className="no-print">
             <div style={styles.gameTypeSwitch} role="tablist" aria-label="Дисциплина">
@@ -2951,6 +2997,8 @@ export default function BilliardsTracker() {
               </button>
             ))}
           </nav>
+        )}
+          </>
         )}
       </div>
 
