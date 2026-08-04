@@ -809,6 +809,111 @@ function makeStyles(dark) {
     finishBtn: { flex: 1, padding: "12px", borderRadius: "10px", border: `1.5px solid ${COLORS.felt}`, background: COLORS.felt, color: COLORS.cream, fontWeight: 700, fontSize: "13px" },
     cancelBtn: { flex: 1, padding: "12px", borderRadius: "10px", border: `1.5px solid ${COLORS.danger}`, background: "transparent", color: COLORS.danger, fontWeight: 600, fontSize: "13px" },
     winBtn: { padding: "10px 16px", borderRadius: "10px", border: `1.5px solid ${COLORS.felt}`, background: COLORS.felt, color: COLORS.cream, fontWeight: 700, fontSize: "13px" },
+    fsOverlay: {
+      background: "radial-gradient(140% 100% at 50% 0%, #16352A 0%, #0A1A14 60%)",
+      display: "flex",
+      flexDirection: "column",
+      paddingTop: "env(safe-area-inset-top)",
+      paddingBottom: "env(safe-area-inset-bottom)",
+    },
+    fsTopBar: { display: "flex", alignItems: "center", gap: "8px", padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.12)" },
+    fsTopBtn: {
+      padding: "8px 12px",
+      borderRadius: "8px",
+      border: "1px solid rgba(255,255,255,0.28)",
+      background: "rgba(0,0,0,0.2)",
+      color: "#F3EBDA",
+      fontSize: "12px",
+      fontWeight: 700,
+    },
+    fsBallPicker: { display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "6px", padding: "10px 12px 0" },
+    fsBallChip: {
+      borderRadius: "10px",
+      padding: "9px 0",
+      textAlign: "center",
+      fontSize: "13px",
+      fontWeight: 700,
+      border: "1px solid rgba(255,255,255,0.22)",
+      background: "rgba(0,0,0,0.22)",
+      color: "#F3EBDA",
+    },
+    fsBallChipActive: { background: COLORS.brass, borderColor: COLORS.brass, color: "#2C1D08" },
+    fsReachedBanner: {
+      margin: "10px 12px 0",
+      padding: "10px 12px",
+      borderRadius: "10px",
+      background: "rgba(62,155,92,0.2)",
+      border: "1px solid #3E9B5C",
+      color: "#F3EBDA",
+      textAlign: "center",
+      fontSize: "13px",
+    },
+    fsZones: { flex: 1, display: "flex", flexDirection: "row", gap: "2px", minHeight: 0 },
+    fsZone: {
+      flex: 1,
+      display: "flex",
+      flexDirection: "column",
+      position: "relative",
+      cursor: "pointer",
+      userSelect: "none",
+      touchAction: "manipulation",
+      minHeight: 0,
+    },
+    fsZoneCenter: {
+      flex: 1,
+      minHeight: 0,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: "10px",
+      width: "100%",
+    },
+    fsZoneName: {
+      fontSize: "16px",
+      fontWeight: 700,
+      color: "#F8F1DE",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      textShadow: "0 2px 6px rgba(0,0,0,0.35)",
+      textAlign: "center",
+    },
+    fsZoneScore: {
+      fontFamily: "'Space Mono', monospace",
+      fontSize: "min(26vw, 108px)",
+      fontWeight: 700,
+      color: "#FBEFD2",
+      background: "transparent",
+      border: "none",
+      lineHeight: 1,
+      padding: 0,
+      textShadow: "0 4px 18px rgba(0,0,0,0.4)",
+    },
+    fsZoneMinusBar: {
+      width: "100%",
+      padding: "14px 0",
+      border: "none",
+      borderTop: "1px solid rgba(255,255,255,0.16)",
+      background: "rgba(0,0,0,0.24)",
+      color: "#F3EBDA",
+      fontSize: "14px",
+      fontWeight: 700,
+      touchAction: "manipulation",
+    },
+    fsZoneEdit: {
+      position: "absolute",
+      top: "10px",
+      left: "14px",
+      width: "38px",
+      height: "38px",
+      borderRadius: "50%",
+      border: "1px solid rgba(255,255,255,0.3)",
+      background: "rgba(0,0,0,0.28)",
+      color: "#F3EBDA",
+      fontSize: "15px",
+    },
+    fsHint: { textAlign: "center", fontSize: "11.5px", color: "rgba(243,235,218,0.6)", padding: "8px 14px" },
     table: { width: "100%", borderCollapse: "collapse" },
     th: { textAlign: "left", fontSize: "10.5px", textTransform: "uppercase", letterSpacing: "0.04em", color: T.sub, borderBottom: `2px solid ${T.tableBorder}`, padding: "6px 6px" },
     td: { padding: "9px 6px", borderBottom: `1px solid ${T.rowBorder}`, fontSize: "13px", color: T.text },
@@ -1987,6 +2092,18 @@ export default function BilliardsTracker() {
         .menu-reveal { animation: fadeIn 0.9s ease; }
         .wheel-scroll::-webkit-scrollbar { display: none; }
         .wheel-scroll { scrollbar-width: none; }
+        .fs-overlay { position: fixed; inset: 0; z-index: 40; }
+        @media (orientation: portrait) {
+          .fs-overlay {
+            top: 50%;
+            left: 50%;
+            right: auto;
+            bottom: auto;
+            width: 100vh;
+            height: 100vw;
+            transform: translate(-50%, -50%) rotate(90deg);
+          }
+        }
         @media print {
           .no-print { display: none !important; }
         }
@@ -2357,6 +2474,109 @@ export default function BilliardsTracker() {
                   gm && gm.target
                     ? activeGame.participants.find((pid) => (activeGame.scores[pid] || 0) >= targetOf(pid))
                     : null;
+
+                if (gameMode) {
+                  return (
+                    <div style={styles.fsOverlay} className="fs-overlay no-print">
+                      <div style={styles.fsTopBar}>
+                        <button style={styles.fsTopBtn} onClick={() => setGameMode(false)}>
+                          ▣ Обычный вид
+                        </button>
+                        <button
+                          style={{ ...styles.fsTopBtn, opacity: !activeGame.actionLog || activeGame.actionLog.length === 0 ? 0.4 : 1 }}
+                          disabled={!activeGame.actionLog || activeGame.actionLog.length === 0}
+                          onClick={undoLast}
+                        >
+                          ↶ Отменить
+                        </button>
+                        <button style={{ ...styles.fsTopBtn, borderColor: COLORS.felt, color: COLORS.felt }} onClick={attemptFinish}>
+                          Завершить
+                        </button>
+                      </div>
+                      {isPoints && (
+                        <div style={styles.fsBallPicker}>
+                          {Array.from({ length: 15 }, (_, i) => i + 1).map((v) => (
+                            <button
+                              key={v}
+                              onClick={() => {
+                                haptic("light");
+                                setBallValue(v);
+                              }}
+                              style={{
+                                ...styles.fsBallChip,
+                                ...(ballValue === v ? styles.fsBallChipActive : {}),
+                              }}
+                            >
+                              {v}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {reachedId && (
+                        <div style={styles.fsReachedBanner}>
+                          <IconTrophy /> <strong>{nameById(reachedId)}</strong> достиг цели ({targetOf(reachedId)} {gm.unit})!
+                          <button style={{ ...styles.brassBtn, marginTop: "8px", width: "100%" }} onClick={() => finalizeGame(reachedId)}>
+                            Засчитать победу
+                          </button>
+                        </div>
+                      )}
+                      <div style={styles.fsZones}>
+                        {activeGame.participants.map((pid) => (
+                          <div
+                            key={pid}
+                            style={{
+                              ...styles.fsZone,
+                              background: `radial-gradient(120% 90% at 50% 0%, ${playerColor(pid)}b3 0%, ${playerColor(pid)}3d 38%, rgba(10,26,20,0.98) 82%)`,
+                            }}
+                            onClick={() => addPoint(pid, isPoints ? ballValue : 1)}
+                          >
+                            <button
+                              style={styles.fsZoneEdit}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setScoreWheelPid(pid);
+                              }}
+                              aria-label={`Изменить счёт: ${nameById(pid)}`}
+                            >
+                              ✎
+                            </button>
+                            <div style={styles.fsZoneCenter}>
+                              <div style={styles.fsZoneName}>
+                                <PlayerBall color={playerColor(pid)} size={20} /> {nameById(pid)}
+                                {gm && targetOf(pid) ? (
+                                  <span style={{ opacity: 0.6, fontSize: "12px", fontWeight: 500 }}> · до {targetOf(pid)}</span>
+                                ) : null}
+                              </div>
+                              <span
+                                key={scorePulse.pid === pid ? scorePulse.ts : "s"}
+                                style={{ display: "inline-block", animation: scorePulse.pid === pid ? "scorePop 0.32s ease" : "none" }}
+                              >
+                                <div style={styles.fsZoneScore} aria-label={`Счёт: ${nameById(pid)}`}>
+                                  {activeGame.scores[pid] || 0}
+                                </div>
+                              </span>
+                            </div>
+                            <button
+                              style={{ ...styles.fsZoneMinusBar, opacity: (activeGame.scores[pid] || 0) <= 0 ? 0.4 : 1 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addPoint(pid, -1);
+                              }}
+                              disabled={(activeGame.scores[pid] || 0) <= 0}
+                              aria-label={`Убрать шар (ошибка/штраф): ${nameById(pid)}`}
+                            >
+                              − Убрать шар
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <p style={styles.fsHint}>
+                        Тапните по своей половине экрана, чтобы добавить {isPoints ? `${ballValue} очк.` : "шар"}
+                      </p>
+                    </div>
+                  );
+                }
+
                 return (
                 <div style={styles.cardFrosted}>
                   <div style={styles.liveHeader}>
@@ -2364,19 +2584,19 @@ export default function BilliardsTracker() {
                     <h2 style={{ ...styles.h2, margin: 0, flex: 1 }}>Партия идёт</h2>
                     <button
                       style={{ ...styles.diceBtn, padding: "6px 10px", fontSize: "11px" }}
-                      onClick={() => setGameMode((v) => !v)}
+                      onClick={() => setGameMode(true)}
                       className="no-print"
                     >
-                      {gameMode ? "▣ Обычный вид" : "⛶ Крупный режим"}
+                      ⛶ Крупный режим
                     </button>
                   </div>
-                  {!gameMode && gm && (
+                  {gm && (
                     <p style={styles.hint}>
                       {gm.name} ({gm.alias})
                       {gm.target ? ` · до ${gm.target} ${gm.unit}` : " · круговой расчёт, завершите вручную, когда закончите"}
                     </p>
                   )}
-                  {!gameMode && activeGame.breakerId && (
+                  {activeGame.breakerId && (
                     <div style={styles.breakerBanner}>
                       <IconTarget /> Первым разбивал: <strong>{nameById(activeGame.breakerId)}</strong>
                     </div>
@@ -2392,11 +2612,9 @@ export default function BilliardsTracker() {
                       </button>
                     </div>
                   )}
-                  {!gameMode && (
-                    <p style={styles.hint}>
-                      {isPoints ? "Отмечайте набранные очки каждого игрока" : "Отмечайте забитые шары каждого игрока"}
-                    </p>
-                  )}
+                  <p style={styles.hint}>
+                    {isPoints ? "Отмечайте набранные очки каждого игрока" : "Отмечайте забитые шары каждого игрока"}
+                  </p>
                   {isPoints && (
                     <div style={{ marginTop: "10px" }}>
                       <p style={styles.hint}>Номинал забитого шара (очки = номер шара)</p>
@@ -2424,21 +2642,11 @@ export default function BilliardsTracker() {
                       </div>
                     </div>
                   )}
-                  <div style={{ ...styles.scoreboard, ...(gameMode ? { gap: "14px", marginTop: "16px" } : {}) }}>
+                  <div style={styles.scoreboard}>
                     {activeGame.participants.map((pid) => (
-                      <div
-                        key={pid}
-                        style={{
-                          ...styles.scoreCard,
-                          borderLeft: `4px solid ${playerColor(pid)}`,
-                          ...(gameMode
-                            ? { padding: "22px 18px", cursor: "pointer", userSelect: "none", flexWrap: "wrap", rowGap: "12px" }
-                            : {}),
-                        }}
-                        onClick={gameMode ? () => addPoint(pid, isPoints ? ballValue : 1) : undefined}
-                      >
-                        <div style={{ ...styles.scoreName, ...(gameMode ? { fontSize: "18px", flexBasis: "100%" } : {}) }}>
-                          <PlayerBall color={playerColor(pid)} size={gameMode ? 18 : 14} /> {nameById(pid)}
+                      <div key={pid} style={{ ...styles.scoreCard, borderLeft: `4px solid ${playerColor(pid)}` }}>
+                        <div style={styles.scoreName}>
+                          <PlayerBall color={playerColor(pid)} size={14} /> {nameById(pid)}
                           {gm && targetOf(pid) ? (
                             <span style={{ opacity: 0.6, fontSize: "11px", fontWeight: 500 }}> · до {targetOf(pid)}</span>
                           ) : null}
@@ -2456,7 +2664,7 @@ export default function BilliardsTracker() {
                               e.stopPropagation();
                               setScoreWheelPid(pid);
                             }}
-                            style={{ ...styles.scoreInput, ...(gameMode ? { fontSize: "28px", width: "68px", height: "50px" } : {}) }}
+                            style={styles.scoreInput}
                             aria-label={`Счёт: ${nameById(pid)}`}
                           >
                             {activeGame.scores[pid] || 0}
@@ -2464,7 +2672,7 @@ export default function BilliardsTracker() {
                         </span>
                         <div style={styles.scoreBtns}>
                           <button
-                            style={{ ...styles.scoreBtnMinus, ...(gameMode ? { width: "52px", height: "52px", fontSize: "24px" } : {}) }}
+                            style={styles.scoreBtnMinus}
                             onClick={(e) => {
                               e.stopPropagation();
                               addPoint(pid, -1);
@@ -2475,10 +2683,7 @@ export default function BilliardsTracker() {
                             −
                           </button>
                           <button
-                            style={{
-                              ...styles.scoreBtnPlus,
-                              ...(gameMode ? { height: "52px", fontSize: "17px", padding: "0 20px" } : {}),
-                            }}
+                            style={styles.scoreBtnPlus}
                             onClick={(e) => {
                               e.stopPropagation();
                               addPoint(pid, isPoints ? ballValue : 1);
@@ -2491,11 +2696,6 @@ export default function BilliardsTracker() {
                       </div>
                     ))}
                   </div>
-                  {gameMode && (
-                    <p style={{ ...styles.hint, textAlign: "center", marginTop: "8px" }}>
-                      Тапните по карточке игрока, чтобы добавить {isPoints ? `${ballValue} очк.` : "шар"}
-                    </p>
-                  )}
                   <button
                     style={{ ...styles.diceBtn, marginTop: "12px", width: "100%" }}
                     disabled={!activeGame.actionLog || activeGame.actionLog.length === 0}
