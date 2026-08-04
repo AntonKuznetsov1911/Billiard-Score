@@ -1498,6 +1498,15 @@ export default function BilliardsTracker() {
     setVictory((v) => (v ? { ...v, breakerPotted: potted } : v));
   };
 
+  const setBreaker = (pid) => {
+    if (!victory || !victory.matchId) return;
+    updateData((prev) => ({
+      ...prev,
+      matches: prev.matches.map((m) => (m.id === victory.matchId ? { ...m, breakerId: pid } : m)),
+    }));
+    setVictory((v) => (v ? { ...v, breakerId: pid } : v));
+  };
+
   const shareVictory = async () => {
     if (!victory) return;
     const names = victory.participants.map((pid) => `${nameById(pid)} ${victory.scores[pid] || 0}`).join(" : ");
@@ -3253,24 +3262,39 @@ export default function BilliardsTracker() {
                   : `${nameById(victory.winnerId)} проходит в следующий раунд турнира`}
               </div>
             )}
-            {victory.breakerId && (
+            {!victory.solo && (
               <div style={{ ...styles.breakerBanner, marginTop: "10px" }}>
-                <IconTarget /> Разбивал: <strong>{nameById(victory.breakerId)}</strong>
-                <div style={{ marginTop: "8px" }}>Забил шар при разборе?</div>
-                <div style={{ display: "flex", gap: "8px", marginTop: "6px", justifyContent: "center" }}>
-                  <button
-                    style={{ ...styles.diceBtn, ...(victory.breakerPotted === true ? { background: COLORS.brass, color: "#2C1D08", borderColor: COLORS.brass } : {}) }}
-                    onClick={() => setBreakerPotted(true)}
-                  >
-                    Да
-                  </button>
-                  <button
-                    style={{ ...styles.diceBtn, ...(victory.breakerPotted === false ? { background: COLORS.brass, color: "#2C1D08", borderColor: COLORS.brass } : {}) }}
-                    onClick={() => setBreakerPotted(false)}
-                  >
-                    Нет
-                  </button>
-                </div>
+                {victory.breakerId ? (
+                  <>
+                    <IconTarget /> Разбивал: <strong>{nameById(victory.breakerId)}</strong>
+                    <div style={{ marginTop: "8px" }}>Забил шар при разборе?</div>
+                    <div style={{ display: "flex", gap: "8px", marginTop: "6px", justifyContent: "center" }}>
+                      <button
+                        style={{ ...styles.diceBtn, ...(victory.breakerPotted === true ? { background: COLORS.brass, color: "#2C1D08", borderColor: COLORS.brass } : {}) }}
+                        onClick={() => setBreakerPotted(true)}
+                      >
+                        Да
+                      </button>
+                      <button
+                        style={{ ...styles.diceBtn, ...(victory.breakerPotted === false ? { background: COLORS.brass, color: "#2C1D08", borderColor: COLORS.brass } : {}) }}
+                        onClick={() => setBreakerPotted(false)}
+                      >
+                        Нет
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <IconTarget /> Кто разбивал?
+                    <div style={{ display: "flex", gap: "8px", marginTop: "8px", justifyContent: "center", flexWrap: "wrap" }}>
+                      {victory.participants.map((pid) => (
+                        <button key={pid} style={styles.diceBtn} onClick={() => setBreaker(pid)}>
+                          {nameById(pid)}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "16px" }}>
