@@ -26,13 +26,16 @@ import {
   normalizeData,
   formatDuration,
   computeStats,
+  buildRatingTrend,
+  computeRecords,
+  computeAchievements,
   buildBracketRounds,
   bracketRoundLabel,
   buildKolhozSettlement,
 } from "./gameLogic.js";
 import Onboarding from "./Onboarding.jsx";
 
-const RatingChart = lazy(() => import("./RatingChart.jsx"));
+const RatingChartPanel = lazy(() => import("./RatingChart.jsx").then((m) => ({ default: m.RatingChartPanel })));
 
 const STORAGE_KEY = "billiards-club-data";
 const ONBOARDING_KEY = "billiards-onboarding-v1";
@@ -757,6 +760,19 @@ function makeStyles(dark) {
       fontSize: "13px",
       textAlign: "center",
     },
+    achievementBanner: {
+      marginTop: "12px",
+      padding: "10px 12px",
+      borderRadius: "10px",
+      display: "flex",
+      flexDirection: "column",
+      gap: "6px",
+      background: "linear-gradient(135deg, rgba(217,163,84,0.28) 0%, rgba(169,112,31,0.14) 100%)",
+      border: "1px solid rgba(248,225,168,0.6)",
+      boxShadow: "0 6px 18px rgba(0,0,0,0.22)",
+      textAlign: "left",
+    },
+    achievementRow: { display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#FBF3DE" },
     liveHeader: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" },
     liveDot: { width: "9px", height: "9px", borderRadius: "50%", background: "#3E9B5C" },
     scoreboard: { display: "flex", flexDirection: "column", gap: "10px", marginTop: "14px" },
@@ -952,7 +968,7 @@ export default function BilliardsTracker() {
 
   const handleGatePick = (type) => {
     setGameType(type);
-    setTimeout(() => setMenuVisible(true), 2400);
+    setTimeout(() => setMenuVisible(true), 1900);
   };
 
   const dismissOnboarding = useCallback(() => {
@@ -1408,6 +1424,33 @@ export default function BilliardsTracker() {
       settlement,
       bracketId: bracketUpdate ? bracketUpdate.id : null,
     };
+
+    // Detect newly-unlocked achievements/records by comparing the state
+    // right before vs. right after this match is folded in.
+    const prevMatches = data.matches;
+    const nextMatches = [...prevMatches, match];
+    const prevAchievements = computeAchievements(computeStats(data.players, prevMatches), prevMatches);
+    const nextAchievements = computeAchievements(computeStats(data.players, nextMatches), nextMatches);
+    const newAchievements = [];
+    g.participants.forEach((pid) => {
+      const before = (prevAchievements[pid] || []).map((b) => b[1]);
+      (nextAchievements[pid] || []).forEach(([icon, label]) => {
+        if (!before.includes(label)) newAchievements.push({ playerId: pid, icon, label });
+      });
+    });
+    const prevRecords = computeRecords(prevMatches);
+    const nextRecords = computeRecords(nextMatches);
+    const newRecords = [];
+    if (prevRecords.fastest && nextRecords.fastest && nextRecords.fastest.id === match.id) {
+      newRecords.push({ type: "fastest", icon: "⚡", label: `Самая быстрая победа — ${formatDuration(match.durationMs)}` });
+    }
+    if (prevRecords.longest && nextRecords.longest && nextRecords.longest.id === match.id) {
+      newRecords.push({ type: "longest", icon: "🕰️", label: `Самая долгая партия — ${formatDuration(match.durationMs)}` });
+    }
+    if (prevRecords.blow && nextRecords.blow && nextRecords.blow.id === match.id && nextRecords.blowMargin > 0) {
+      newRecords.push({ type: "blow", icon: "💥", label: "Самый крупный разгром за всё время" });
+    }
+
     updateData((prev) => ({
       ...prev,
       matches: [...prev.matches, match],
@@ -1433,6 +1476,8 @@ export default function BilliardsTracker() {
       bracket: bracketInfo,
       breakerId: g.breakerId || null,
       breakerPotted: null,
+      newAchievements,
+      newRecords,
     });
     haptic("success");
     setCelebrate(true);
@@ -1721,6 +1766,8 @@ export default function BilliardsTracker() {
     [stats]
   );
 
+  const trendData = useMemo(() => buildRatingTrend(data.players, data.matches), [data.players, data.matches]);
+
   const streakLeaders = useMemo(
     () => [...stats].filter((s) => s.bestStreak > 0).sort((a, b) => b.bestStreak - a.bestStreak).slice(0, 5),
     [stats]
@@ -1735,59 +1782,9 @@ export default function BilliardsTracker() {
     [data.players]
   );
 
-  const records = useMemo(() => {
-    const vs = data.matches.filter((m) => !m.solo);
-    const withDur = vs.filter((m) => m.durationMs > 0);
-    const fastest = withDur.reduce((a, m) => (!a || m.durationMs < a.durationMs ? m : a), null);
-    const longest = withDur.reduce((a, m) => (!a || m.durationMs > a.durationMs ? m : a), null);
-    let blow = null;
-    let blowMargin = -1;
-    vs.forEach((m) => {
-      const ws = (m.scores && m.scores[m.winnerId]) || 0;
-      const opp = Math.max(0, ...m.participants.filter((p) => p !== m.winnerId).map((p) => (m.scores && m.scores[p]) || 0));
-      const margin = ws - opp;
-      if (margin > blowMargin) {
-        blowMargin = margin;
-        blow = m;
-      }
-    });
-    return { fastest, longest, blow, blowMargin };
-  }, [data.matches]);
+  const records = useMemo(() => computeRecords(data.matches), [data.matches]);
 
-  const achievements = useMemo(() => {
-    const map = {};
-    stats.forEach((s) => {
-      const list = [];
-      if (s.wins >= 1) list.push(["🥇", "Первая победа"]);
-      if (s.bestStreak >= 5) list.push(["🔥", "5 побед подряд"]);
-      if (s.bestStreak >= 10) list.push(["⚡", "10 побед подряд"]);
-      if (s.totalBalls >= 50) list.push(["🎱", "50 шаров"]);
-      if (s.totalBalls >= 100) list.push(["💯", "100 шаров"]);
-      if (s.totalBalls >= 500) list.push(["🏵️", "500 шаров"]);
-      map[s.id] = list;
-    });
-    data.matches
-      .filter((m) => !m.solo)
-      .forEach((m) => {
-        const ws = (m.scores && m.scores[m.winnerId]) || 0;
-        const oppMax = Math.max(
-          0,
-          ...m.participants.filter((p) => p !== m.winnerId).map((p) => (m.scores && m.scores[p]) || 0)
-        );
-        if (oppMax === 0 && ws > 0 && map[m.winnerId] && !map[m.winnerId].some((b) => b[1] === "Сухая победа")) {
-          map[m.winnerId].push(["🧊", "Сухая победа"]);
-        }
-        if (m.durationMs >= 3600000) {
-          m.participants.forEach((p) => {
-            if (map[p] && !map[p].some((b) => b[1] === "Марафон 60+ мин")) map[p].push(["🕰️", "Марафон 60+ мин"]);
-          });
-        }
-        if (m.durationMs > 0 && m.durationMs <= 300000 && map[m.winnerId] && !map[m.winnerId].some((b) => b[1] === "Блиц-победа")) {
-          map[m.winnerId].push(["🚀", "Блиц-победа"]);
-        }
-      });
-    return map;
-  }, [stats, data.matches]);
+  const achievements = useMemo(() => computeAchievements(stats, data.matches), [stats, data.matches]);
 
   const h2hStats = useMemo(() => {
     const { a, b } = h2h;
@@ -2531,14 +2528,18 @@ export default function BilliardsTracker() {
           {tab === "rating" && (
             <section>
               <div style={styles.card}>
-                <h2 style={styles.h2}>График результатов</h2>
-                {stats.length === 0 ? (
-                  <EmptyState text="Сыгранных партий пока нет" />
-                ) : (
-                  <Suspense fallback={<div style={{ ...styles.hint, textAlign: "center", padding: "40px 0" }}>Загрузка графика…</div>}>
-                    <RatingChart chartData={chartData} dark={dark} hintColor={styles.hint.color} />
-                  </Suspense>
-                )}
+                <h2 style={styles.h2}>Статистика</h2>
+                <Suspense fallback={<div style={{ ...styles.hint, textAlign: "center", padding: "40px 0" }}>Загрузка графика…</div>}>
+                  <RatingChartPanel
+                    trendData={trendData}
+                    chartData={chartData}
+                    stats={stats}
+                    players={data.players}
+                    dark={dark}
+                    hintColor={styles.hint.color}
+                    playerColor={playerColor}
+                  />
+                </Suspense>
               </div>
 
               <div style={styles.card}>
@@ -3201,6 +3202,26 @@ export default function BilliardsTracker() {
               <p style={{ ...styles.hint, color: "#E7DCC0" }}>
                 {RUSSIAN_MODES[victory.mode].name} ({RUSSIAN_MODES[victory.mode].alias})
               </p>
+            )}
+            {((victory.newRecords && victory.newRecords.length > 0) || (victory.newAchievements && victory.newAchievements.length > 0)) && (
+              <div style={styles.achievementBanner} className="tab-fade">
+                {victory.newRecords.map((r) => (
+                  <div key={r.type} style={styles.achievementRow}>
+                    <span style={{ fontSize: "18px" }}>{r.icon}</span>
+                    <span>
+                      <strong>Новый рекорд!</strong> {r.label}
+                    </span>
+                  </div>
+                ))}
+                {victory.newAchievements.map((a, i) => (
+                  <div key={i} style={styles.achievementRow}>
+                    <span style={{ fontSize: "18px" }}>{a.icon}</span>
+                    <span>
+                      <strong>Новое достижение!</strong> {nameById(a.playerId)} — {a.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
             {victory.series && (
               <div style={{ ...styles.breakerBanner, marginTop: "10px" }}>
