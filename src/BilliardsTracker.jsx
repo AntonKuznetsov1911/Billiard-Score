@@ -841,6 +841,7 @@ export default function BilliardsTracker() {
   const [isOffline, setIsOffline] = useState(typeof navigator !== "undefined" && !navigator.onLine);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [tableLit, setTableLit] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [openRuleKey, setOpenRuleKey] = useState(null);
   const [ballValue, setBallValue] = useState(5);
@@ -939,9 +940,20 @@ export default function BilliardsTracker() {
   }, [loaded]);
 
   useEffect(() => {
-    if (loaded && data.activeGame) setTableLit(true);
+    if (loaded && data.activeGame) {
+      // Returning to a match already in progress — light and menu appear
+      // together, no delayed reveal (that's only for the first discipline
+      // pick on a fresh gate screen).
+      setTableLit(true);
+      setMenuVisible(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
+
+  const handleGatePick = (type) => {
+    setGameType(type);
+    setTimeout(() => setMenuVisible(true), 2400);
+  };
 
   const dismissOnboarding = useCallback(() => {
     setShowOnboarding(false);
@@ -1966,6 +1978,7 @@ export default function BilliardsTracker() {
           100% { opacity: 1; transform: translateY(0); }
         }
         .tab-fade { animation: fadeIn 0.22s ease; }
+        .menu-reveal { animation: fadeIn 0.9s ease; }
         .wheel-scroll::-webkit-scrollbar { display: none; }
         .wheel-scroll { scrollbar-width: none; }
         @media print {
@@ -1985,9 +1998,9 @@ export default function BilliardsTracker() {
           </div>
         )}
         {showDisciplineGate ? (
-          <DisciplineGate onPick={setGameType} />
-        ) : (
-          <>
+          <DisciplineGate onPick={handleGatePick} />
+        ) : !menuVisible ? null : (
+          <div className="menu-reveal">
         {!immersive && (
           <header style={styles.header} className="no-print">
             <div style={styles.gameTypeSwitch} role="tablist" aria-label="Дисциплина">
@@ -3019,7 +3032,7 @@ export default function BilliardsTracker() {
             ))}
           </nav>
         )}
-          </>
+          </div>
         )}
       </div>
 
