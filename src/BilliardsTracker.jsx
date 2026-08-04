@@ -3176,7 +3176,7 @@ export default function BilliardsTracker() {
             color: "#F3EBDA",
             background: `linear-gradient(180deg, ${
               victory.solo ? COLORS.brass : playerColor(victory.winnerId)
-            }cc 0%, rgba(10,43,32,0.97) 68%)`,
+            } 0%, rgba(10,43,32,1) 68%)`,
             animation: "fadeIn 0.3s ease",
           }}
         >
