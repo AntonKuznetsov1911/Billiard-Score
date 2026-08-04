@@ -1073,7 +1073,7 @@ export default function BilliardsTracker() {
 
   const handleGatePick = (type) => {
     setGameType(type);
-    setTimeout(() => setMenuVisible(true), 1900);
+    setTimeout(() => setMenuVisible(true), 1000);
   };
 
   const dismissOnboarding = useCallback(() => {
@@ -1418,12 +1418,12 @@ export default function BilliardsTracker() {
   };
 
   const addPoint = (playerId, delta) => {
-    // Guards against the same tap firing twice/thrice on mobile (touch +
-    // synthetic click both landing, or a stray extra event during the
-    // score-pop animation) without blocking genuinely separate taps.
+    // Guards against the same tap firing twice on mobile (touch + synthetic
+    // click both landing) without blocking genuinely separate fast taps —
+    // real double-fires land within the same event loop turn, well under 70ms.
     const tapKey = `${playerId}:${delta}`;
     const now = Date.now();
-    if (lastTapRef.current.key === tapKey && now - lastTapRef.current.ts < 220) return;
+    if (lastTapRef.current.key === tapKey && now - lastTapRef.current.ts < 70) return;
     lastTapRef.current = { key: tapKey, ts: now };
     haptic("light");
     setScorePulse({ pid: playerId, ts: Date.now() });
