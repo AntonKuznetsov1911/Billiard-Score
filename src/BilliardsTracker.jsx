@@ -784,9 +784,9 @@ function makeStyles(dark) {
       justifyContent: "space-between",
       padding: "12px 14px",
       borderRadius: "12px",
-      background: dark ? "rgba(10,32,24,0.35)" : T.cardBg,
-      backdropFilter: dark ? "blur(22px) saturate(160%)" : "none",
-      WebkitBackdropFilter: dark ? "blur(22px) saturate(160%)" : "none",
+      background: dark ? T.cardBg : T.cardBgFrosted,
+      backdropFilter: dark ? "none" : "blur(22px) saturate(160%)",
+      WebkitBackdropFilter: dark ? "none" : "blur(22px) saturate(160%)",
       border: `1px solid ${dark ? "rgba(255,255,255,0.10)" : T.cardBorder}`,
     },
     scoreName: { color: T.text, fontWeight: 600, fontSize: "14px", flex: 1 },
@@ -1626,6 +1626,11 @@ export default function BilliardsTracker() {
       !victory.solo ? `Счёт: ${names}` : "",
       gm ? `Режим: ${gm.name} (${gm.alias})` : GAME_TYPES[victory.gameType].label,
       victory.durationMs ? `Время: ${formatDuration(victory.durationMs)}` : "",
+      victory.breakerId
+        ? `Разбивал: ${nameById(victory.breakerId)}${
+            victory.breakerPotted === true ? " (забил с разбоя)" : victory.breakerPotted === false ? " (не забил с разбоя)" : ""
+          }`
+        : "",
       victory.series
         ? `Матч (Best of ${victory.series.bestOf}): ${victory.series.participants
             .map((pid) => `${nameById(pid)} ${victory.series.wins[pid] || 0}`)
@@ -1933,6 +1938,7 @@ export default function BilliardsTracker() {
       Счёт: m.participants.map((pid) => `${nameById(pid)}: ${(m.scores && m.scores[pid]) || 0}`).join(" | "),
       Победитель: nameById(m.winnerId),
       Начинал: m.breakerId ? nameById(m.breakerId) : "",
+      "Забил с разбоя": m.breakerId ? (m.breakerPotted === true ? "Да" : m.breakerPotted === false ? "Нет" : "") : "",
       "Длительность, мин": m.durationMs ? Math.round(m.durationMs / 60000) : "",
     }));
     const statRows = stats.map((s) => ({
