@@ -542,8 +542,8 @@ function makeStyles(dark) {
         cardBg: "rgba(20,22,18,0)",
         cardBgFrosted: "rgba(20,22,18,0.18)",
         cardBorder: "rgba(255,255,255,0.20)",
-        text: "#F1EAD8",
-        sub: "#CDC3A6",
+        text: "#FDF6E3",
+        sub: "#E3D9BC",
         inputBg: "rgba(255,255,255,0.06)",
         inputBorder: "rgba(255,255,255,0.20)",
         chipBg: "rgba(255,255,255,0.08)",
@@ -587,9 +587,11 @@ function makeStyles(dark) {
       fontFamily: "'Inter', sans-serif",
       color: T.text,
       paddingBottom: "calc(84px + env(safe-area-inset-bottom))",
-      // Inherited by all text below — keeps labels readable over the photo
-      // now that cards themselves have no blur/tint of their own.
-      textShadow: dark ? "0 1px 3px rgba(0,0,0,0.6)" : "0 1px 3px rgba(0,0,0,0.30)",
+      // Inherited by all text below. Light theme is blurred (has a frosted
+      // pedestal behind text, so a light shadow is enough); dark theme is
+      // fully transparent with no blur backing it, so it leans on a much
+      // stronger shadow to stay legible over the photo on its own.
+      textShadow: dark ? "0 1px 4px rgba(0,0,0,0.85), 0 2px 12px rgba(0,0,0,0.55)" : "0 1px 3px rgba(0,0,0,0.30)",
     },
     header: {
       padding: "calc(16px + env(safe-area-inset-top)) 20px 18px",
@@ -615,8 +617,8 @@ function makeStyles(dark) {
       borderRadius: "999px",
       background: "rgba(10,10,8,0)",
       border: "1px solid rgba(255,255,255,0.28)",
-      backdropFilter: dark ? "blur(20px) saturate(160%)" : "none",
-      WebkitBackdropFilter: dark ? "blur(20px) saturate(160%)" : "none",
+      backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
+      WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
     },
     gameTypeSwitchBtn: {
       display: "inline-flex",
@@ -676,20 +678,20 @@ function makeStyles(dark) {
     // Transparent panels; blurred only in dark theme, plain in light theme.
     card: {
       background: T.cardBg,
-      backdropFilter: dark ? "blur(20px) saturate(160%)" : "none",
-      WebkitBackdropFilter: dark ? "blur(20px) saturate(160%)" : "none",
+      backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
+      WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       border: `1px solid ${T.cardBorder}`,
       borderRadius: "18px",
       padding: "18px",
       marginBottom: "16px",
     },
-    // Frosted only in dark theme (where the photo is moodier and text needs
-    // the extra contrast) — clear glass in light theme like everything else.
+    // Frosted only in light theme (the default, blurred one) — clear glass
+    // in dark theme like everything else once its blur is switched off.
     // Wraps the live-match and tie-break cards.
     cardFrosted: {
-      background: dark ? T.cardBgFrosted : T.cardBg,
-      backdropFilter: dark ? "blur(28px) saturate(180%)" : "none",
-      WebkitBackdropFilter: dark ? "blur(28px) saturate(180%)" : "none",
+      background: dark ? T.cardBg : T.cardBgFrosted,
+      backdropFilter: dark ? "none" : "blur(28px) saturate(180%)",
+      WebkitBackdropFilter: dark ? "none" : "blur(28px) saturate(180%)",
       border: `1px solid ${T.cardBorder}`,
       borderRadius: "18px",
       padding: "18px",
@@ -709,8 +711,8 @@ function makeStyles(dark) {
       padding: "6px 6px 6px 12px",
       borderRadius: "999px",
       background: T.cardBg,
-      backdropFilter: dark ? "blur(20px) saturate(160%)" : "none",
-      WebkitBackdropFilter: dark ? "blur(20px) saturate(160%)" : "none",
+      backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
+      WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       border: `1px solid ${T.chipBorder}`,
       fontSize: "13.5px",
       fontWeight: 500,
@@ -723,8 +725,8 @@ function makeStyles(dark) {
       borderRadius: "999px",
       border: `1.5px solid ${COLORS.chalk}`,
       background: T.cardBg,
-      backdropFilter: dark ? "blur(20px) saturate(160%)" : "none",
-      WebkitBackdropFilter: dark ? "blur(20px) saturate(160%)" : "none",
+      backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
+      WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       color: COLORS.chalk,
       fontWeight: 600,
       fontSize: "13px",
@@ -736,8 +738,8 @@ function makeStyles(dark) {
       borderRadius: "8px",
       border: `1.5px solid ${COLORS.chalk}`,
       background: T.cardBg,
-      backdropFilter: dark ? "blur(20px) saturate(160%)" : "none",
-      WebkitBackdropFilter: dark ? "blur(20px) saturate(160%)" : "none",
+      backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
+      WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       color: COLORS.chalk,
       fontWeight: 700,
       fontSize: "12.5px",
@@ -753,8 +755,8 @@ function makeStyles(dark) {
       padding: "10px 12px",
       borderRadius: "10px",
       background: T.cardBg,
-      backdropFilter: dark ? "blur(20px) saturate(160%)" : "none",
-      WebkitBackdropFilter: dark ? "blur(20px) saturate(160%)" : "none",
+      backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
+      WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       border: `1px solid ${dark ? "rgba(231,206,147,0.35)" : "#E7CE93"}`,
       color: T.text,
       fontSize: "13px",
