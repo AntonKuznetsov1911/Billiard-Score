@@ -9,6 +9,7 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["icons/apple-touch-icon.png"],
       manifest: {
+        id: "./",
         name: "Твой бильярд",
         short_name: "Бильярд",
         description: "Учёт партий, счёта и статистики в русском бильярде и пуле",
