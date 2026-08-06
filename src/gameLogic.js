@@ -61,8 +61,18 @@ export function computeStats(players, matches) {
       let bestStreak = 0;
       let run = 0;
       let soloGames = 0;
+      let breaksCount = 0;
+      let breaksAnswered = 0;
+      let breaksPotted = 0;
       pMatches.forEach((m) => {
         totalBalls += (m.scores && m.scores[p.id]) || 0;
+        if (m.breakerId === p.id) {
+          breaksCount += 1;
+          if (m.breakerPotted === true || m.breakerPotted === false) {
+            breaksAnswered += 1;
+            if (m.breakerPotted === true) breaksPotted += 1;
+          }
+        }
         if (m.solo) {
           soloGames += 1;
           return; // practice: no effect on wins/streaks
@@ -96,6 +106,9 @@ export function computeStats(players, matches) {
         bestStreak,
         totalBalls,
         avgBalls: games ? totalBalls / games : 0,
+        breaksCount,
+        breaksPotted,
+        breakPct: breaksAnswered ? Math.round((breaksPotted / breaksAnswered) * 100) : 0,
       };
     })
     .sort((a, b) => b.wins - a.wins || b.winPct - a.winPct);
@@ -152,7 +165,26 @@ export function computeRecords(matches) {
       blow = m;
     }
   });
-  return { fastest, longest, blow, blowMargin };
+
+  // Best break-shot accuracy — highest % of potting on the break, among
+  // players with at least 3 answered breaks (avoids one lucky break "winning").
+  const breakTotals = {};
+  vs.forEach((m) => {
+    if (!m.breakerId || (m.breakerPotted !== true && m.breakerPotted !== false)) return;
+    const t = breakTotals[m.breakerId] || (breakTotals[m.breakerId] = { total: 0, potted: 0 });
+    t.total += 1;
+    if (m.breakerPotted === true) t.potted += 1;
+  });
+  let bestBreaker = null;
+  Object.entries(breakTotals).forEach(([playerId, t]) => {
+    if (t.total < 3) return;
+    const pct = Math.round((t.potted / t.total) * 100);
+    if (!bestBreaker || pct > bestBreaker.pct || (pct === bestBreaker.pct && t.total > bestBreaker.total)) {
+      bestBreaker = { playerId, potted: t.potted, total: t.total, pct };
+    }
+  });
+
+  return { fastest, longest, blow, blowMargin, bestBreaker };
 }
 
 // Per-player achievement badges, keyed by player id — used both to render
@@ -167,6 +199,8 @@ export function computeAchievements(stats, matches) {
     if (s.totalBalls >= 50) list.push(["🎱", "50 шаров"]);
     if (s.totalBalls >= 100) list.push(["💯", "100 шаров"]);
     if (s.totalBalls >= 500) list.push(["🏵️", "500 шаров"]);
+    if (s.breaksPotted >= 1) list.push(["🎯", "Точный разбой"]);
+    if (s.breaksPotted >= 10) list.push(["💥", "10 удачных разбоев"]);
     map[s.id] = list;
   });
   matches

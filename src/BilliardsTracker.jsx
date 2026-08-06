@@ -1598,11 +1598,54 @@ export default function BilliardsTracker() {
 
   const setBreakerPotted = (potted) => {
     if (!victory || !victory.matchId) return;
+    // Computed directly from current state rather than read back from the
+    // updateData call below — React doesn't run that updater synchronously.
+    const updatedMatches = data.matches.map((m) => (m.id === victory.matchId ? { ...m, breakerPotted: potted } : m));
     updateData((prev) => ({
       ...prev,
       matches: prev.matches.map((m) => (m.id === victory.matchId ? { ...m, breakerPotted: potted } : m)),
     }));
-    setVictory((v) => (v ? { ...v, breakerPotted: potted } : v));
+
+    // Whether the break was potted wasn't known yet when finalizeGame ran
+    // its achievement/record diff, so check again now that it's answered.
+    const newBreakAchievements = [];
+    const newBreakRecords = [];
+    if (potted === true && victory.breakerId) {
+      const prevAch = computeAchievements(computeStats(data.players, data.matches), data.matches);
+      const nextAch = computeAchievements(computeStats(data.players, updatedMatches), updatedMatches);
+      const before = (prevAch[victory.breakerId] || []).map((b) => b[1]);
+      (nextAch[victory.breakerId] || []).forEach(([icon, label]) => {
+        if (!before.includes(label)) newBreakAchievements.push({ playerId: victory.breakerId, icon, label });
+      });
+      const prevRec = computeRecords(data.matches);
+      const nextRec = computeRecords(updatedMatches);
+      // Unlike fastest/longest/blow (trivially "the record" the first time
+      // they exist at all), bestBreaker only appears once someone clears
+      // the 3-break threshold — clearing it for the first time is itself
+      // the achievement, so don't require a prior record to compare against.
+      if (
+        nextRec.bestBreaker &&
+        nextRec.bestBreaker.playerId === victory.breakerId &&
+        (!prevRec.bestBreaker || prevRec.bestBreaker.playerId !== victory.breakerId || prevRec.bestBreaker.pct < nextRec.bestBreaker.pct)
+      ) {
+        newBreakRecords.push({ type: "bestBreaker", icon: "🎯", label: `Лучший процент разбоя — ${nextRec.bestBreaker.pct}%` });
+      }
+    }
+
+    setVictory((v) => {
+      if (!v) return v;
+      const existingAchLabels = (v.newAchievements || []).map((a) => `${a.playerId}:${a.label}`);
+      const existingRecordTypes = (v.newRecords || []).map((r) => r.type);
+      return {
+        ...v,
+        breakerPotted: potted,
+        newAchievements: [
+          ...(v.newAchievements || []),
+          ...newBreakAchievements.filter((a) => !existingAchLabels.includes(`${a.playerId}:${a.label}`)),
+        ],
+        newRecords: [...(v.newRecords || []), ...newBreakRecords.filter((r) => !existingRecordTypes.includes(r.type))],
+      };
+    });
   };
 
   const setBreaker = (pid) => {
@@ -1951,6 +1994,8 @@ export default function BilliardsTracker() {
       "Лучшая серия": s.bestStreak,
       "Шаров всего": s.totalBalls,
       "Шаров за игру": Math.round(s.avgBalls * 10) / 10,
+      Разбоев: s.breaksCount,
+      "% разбоя": s.breaksCount ? s.breakPct : "",
     }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "История");
@@ -2799,7 +2844,7 @@ export default function BilliardsTracker() {
 
               <div style={styles.card}>
                 <h2 style={styles.h2}>Рекорды</h2>
-                {!records.fastest && !records.longest && !records.blow ? (
+                {!records.fastest && !records.longest && !records.blow && !records.bestBreaker ? (
                   <p style={styles.emptyText}>Сыграйте пару партий вдвоём — рекорды появятся здесь.</p>
                 ) : (
                   <div>
@@ -2822,6 +2867,12 @@ export default function BilliardsTracker() {
                           .map((pid) => (records.blow.scores && records.blow.scores[pid]) || 0)
                           .sort((a, b) => b - a)
                           .join(":")}
+                      </p>
+                    )}
+                    {records.bestBreaker && (
+                      <p style={{ ...styles.hint, margin: "6px 0" }}>
+                        🎯 Лучший процент разбоя: <strong>{nameById(records.bestBreaker.playerId)}</strong> —{" "}
+                        {records.bestBreaker.pct}% ({records.bestBreaker.potted}/{records.bestBreaker.total})
                       </p>
                     )}
                   </div>
@@ -2927,6 +2978,8 @@ export default function BilliardsTracker() {
                           <th style={styles.th}>Лучш. серия</th>
                           <th style={styles.th}>Шаров</th>
                           <th style={styles.th}>Ср/игру</th>
+                          <th style={styles.th}>Разбоев</th>
+                          <th style={styles.th}>% разбоя</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2941,6 +2994,8 @@ export default function BilliardsTracker() {
                             <td style={{ ...styles.td, ...styles.mono }}>{s.bestStreak}</td>
                             <td style={{ ...styles.td, ...styles.mono }}>{s.totalBalls}</td>
                             <td style={{ ...styles.td, ...styles.mono }}>{s.avgBalls.toFixed(1)}</td>
+                            <td style={{ ...styles.td, ...styles.mono }}>{s.breaksCount}</td>
+                            <td style={{ ...styles.td, ...styles.mono }}>{s.breaksCount ? `${s.breakPct}%` : "—"}</td>
                           </tr>
                         ))}
                       </tbody>
