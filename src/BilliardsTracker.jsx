@@ -675,9 +675,11 @@ function makeStyles(dark) {
     },
     navIcon: { fontSize: "19px", lineHeight: 1 },
     main: { padding: "0 16px", maxWidth: "560px", margin: "0 auto" },
-    // Transparent panels; blurred only in dark theme, plain in light theme.
+    // Frosted (blurred + tinted) in light theme — a blurred photo is still
+    // dark, so dark ink text needs the pale tint for contrast, not just
+    // blur. Fully transparent in dark theme, which uses light text instead.
     card: {
-      background: T.cardBg,
+      background: dark ? T.cardBg : T.cardBgFrosted,
       backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       border: `1px solid ${T.cardBorder}`,
@@ -710,7 +712,7 @@ function makeStyles(dark) {
       gap: "6px",
       padding: "6px 6px 6px 12px",
       borderRadius: "999px",
-      background: T.cardBg,
+      background: dark ? T.cardBg : T.cardBgFrosted,
       backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       border: `1px solid ${T.chipBorder}`,
@@ -724,7 +726,7 @@ function makeStyles(dark) {
       padding: "8px 14px",
       borderRadius: "999px",
       border: `1.5px solid ${COLORS.chalk}`,
-      background: T.cardBg,
+      background: dark ? T.cardBg : T.cardBgFrosted,
       backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       color: COLORS.chalk,
@@ -737,7 +739,7 @@ function makeStyles(dark) {
       padding: "9px 14px",
       borderRadius: "8px",
       border: `1.5px solid ${COLORS.chalk}`,
-      background: T.cardBg,
+      background: dark ? T.cardBg : T.cardBgFrosted,
       backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       color: COLORS.chalk,
@@ -754,7 +756,7 @@ function makeStyles(dark) {
       marginTop: "12px",
       padding: "10px 12px",
       borderRadius: "10px",
-      background: T.cardBg,
+      background: dark ? T.cardBg : T.cardBgFrosted,
       backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       border: `1px solid ${dark ? "rgba(231,206,147,0.35)" : "#E7CE93"}`,
