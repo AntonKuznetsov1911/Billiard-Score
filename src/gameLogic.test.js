@@ -149,6 +149,26 @@ describe("computeRecords", () => {
     expect(records.longest).toBeNull();
     expect(records.blow).toBeNull();
   });
+
+  it("picks the best break-shot accuracy among players with at least 3 answered breaks", () => {
+    const matches = [
+      { participants: ["a", "b"], winnerId: "a", scores: { a: 8, b: 2 }, solo: false, breakerId: "a", breakerPotted: true },
+      { participants: ["a", "b"], winnerId: "b", scores: { a: 2, b: 8 }, solo: false, breakerId: "a", breakerPotted: true },
+      { participants: ["a", "b"], winnerId: "a", scores: { a: 8, b: 2 }, solo: false, breakerId: "a", breakerPotted: false },
+      { participants: ["a", "b"], winnerId: "b", scores: { a: 2, b: 8 }, solo: false, breakerId: "b", breakerPotted: true },
+    ];
+    const records = computeRecords(matches);
+    // "a" broke 3 times, potted 2/3 = 67%; "b" only has 1 answered break — below the threshold.
+    expect(records.bestBreaker.playerId).toBe("a");
+    expect(records.bestBreaker.potted).toBe(2);
+    expect(records.bestBreaker.total).toBe(3);
+    expect(records.bestBreaker.pct).toBe(67);
+  });
+
+  it("has no best breaker when nobody has enough answered breaks", () => {
+    const matches = [{ participants: ["a", "b"], winnerId: "a", scores: { a: 8, b: 2 }, solo: false, breakerId: "a", breakerPotted: true }];
+    expect(computeRecords(matches).bestBreaker).toBeNull();
+  });
 });
 
 describe("computeAchievements", () => {
@@ -180,6 +200,17 @@ describe("computeAchievements", () => {
     expect(blitzMap.a.some((b) => b[1] === "Блиц-победа")).toBe(true);
     expect(marathonMap.a.some((b) => b[1] === "Марафон 60+ мин")).toBe(true);
     expect(marathonMap.b.some((b) => b[1] === "Марафон 60+ мин")).toBe(true);
+  });
+
+  it("awards break-accuracy badges based on successful breaks, not just attempts", () => {
+    const matches = [{ participants: ["a", "b"], winnerId: "a", scores: { a: 8, b: 4 }, solo: false, breakerId: "a", breakerPotted: true }];
+    const map = computeAchievements(computeStats(players, matches), matches);
+    expect(map.a.some((b) => b[1] === "Точный разбой")).toBe(true);
+    expect(map.b.some((b) => b[1] === "Точный разбой")).toBe(false);
+
+    const missed = [{ participants: ["a", "b"], winnerId: "a", scores: { a: 8, b: 4 }, solo: false, breakerId: "a", breakerPotted: false }];
+    const missedMap = computeAchievements(computeStats(players, missed), missed);
+    expect(missedMap.a.some((b) => b[1] === "Точный разбой")).toBe(false);
   });
 });
 
@@ -263,5 +294,17 @@ describe("computeStats", () => {
     ];
     const stats = computeStats(players, matches);
     expect(stats[0].id).toBe("a");
+  });
+
+  it("tracks break count and break accuracy, ignoring unanswered breaks in the percentage", () => {
+    const matches = [
+      { participants: ["a", "b"], winnerId: "a", scores: { a: 8, b: 1 }, solo: false, date: "2024-01-01", breakerId: "a", breakerPotted: true },
+      { participants: ["a", "b"], winnerId: "b", scores: { a: 1, b: 8 }, solo: false, date: "2024-01-02", breakerId: "a", breakerPotted: false },
+      { participants: ["a", "b"], winnerId: "a", scores: { a: 8, b: 1 }, solo: false, date: "2024-01-03", breakerId: "a", breakerPotted: null },
+    ];
+    const anton = computeStats(players, matches).find((s) => s.id === "a");
+    expect(anton.breaksCount).toBe(3);
+    expect(anton.breaksPotted).toBe(1);
+    expect(anton.breakPct).toBe(50); // 1/2 answered breaks, the unanswered one excluded
   });
 });
