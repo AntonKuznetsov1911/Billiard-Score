@@ -2295,8 +2295,8 @@ export default function BilliardsTracker() {
                             } ${RUSSIAN_MODES[data.russianMode || "free"].unit}`
                           : `${RUSSIAN_MODES[data.russianMode || "free"].name} · играют все против всех, круговой расчёт очков в конце`}
                       </p>
-                      {isKolhoz && selected.length > 0 && selected.length < 3 && (
-                        <p style={{ ...styles.hint, color: COLORS.danger }}>Нужно минимум 3 игрока</p>
+                      {isKolhoz && selected.length === 1 && (
+                        <p style={{ ...styles.hint, color: COLORS.danger }}>Нужно минимум 2 игрока</p>
                       )}
                     </div>
                   )}
@@ -2468,7 +2468,7 @@ export default function BilliardsTracker() {
 
                   <button
                     style={{ ...styles.brassBtn, marginTop: "16px", width: "100%" }}
-                    disabled={selected.length < 1 || (isKolhoz && selected.length < 3)}
+                    disabled={selected.length < 1 || (isKolhoz && selected.length < 2)}
                     onClick={startGame}
                   >
                     {selected.length === 1 ? "Начать тренировку (соло)" : "Начать партию"}
