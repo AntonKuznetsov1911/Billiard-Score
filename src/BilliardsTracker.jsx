@@ -544,6 +544,10 @@ function makeStyles(dark) {
         cardBorder: "rgba(255,255,255,0.20)",
         text: "#FDF6E3",
         sub: "#E3D9BC",
+        // Text for solid/opaque surfaces (modals, inputs) — same as the
+        // regular text here since those surfaces are already dark.
+        solidText: "#FDF6E3",
+        solidSub: "#E3D9BC",
         inputBg: "rgba(255,255,255,0.06)",
         inputBorder: "rgba(255,255,255,0.20)",
         chipBg: "rgba(255,255,255,0.08)",
@@ -559,8 +563,13 @@ function makeStyles(dark) {
         cardBg: "rgba(255,251,242,0)",
         cardBgFrosted: "rgba(255,251,242,0.26)",
         cardBorder: "rgba(205,187,144,0.85)",
-        text: COLORS.ink,
-        sub: "#6E6248",
+        // Cards are just blurred (no tint) over the same dark, moody photo
+        // as dark theme, so on-photo text needs to be light here too —
+        // dark ink only reads on genuinely pale/opaque surfaces (below).
+        text: "#FDF6E3",
+        sub: "#E3D9BC",
+        solidText: COLORS.ink,
+        solidSub: "#6E6248",
         inputBg: "rgba(251,247,238,0.55)",
         inputBorder: "#D8CBA9",
         chipBg: "rgba(239,230,204,0.55)",
@@ -675,11 +684,11 @@ function makeStyles(dark) {
     },
     navIcon: { fontSize: "19px", lineHeight: 1 },
     main: { padding: "0 16px", maxWidth: "560px", margin: "0 auto" },
-    // Frosted (blurred + tinted) in light theme — a blurred photo is still
-    // dark, so dark ink text needs the pale tint for contrast, not just
-    // blur. Fully transparent in dark theme, which uses light text instead.
+    // Transparent panel, blurred only in light theme (the default) — clear
+    // glass either way, no tint. On-photo text (T.text) is light in both
+    // themes since the blurred photo is still dark either way.
     card: {
-      background: dark ? T.cardBg : T.cardBgFrosted,
+      background: T.cardBg,
       backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       border: `1px solid ${T.cardBorder}`,
@@ -687,11 +696,10 @@ function makeStyles(dark) {
       padding: "18px",
       marginBottom: "16px",
     },
-    // Frosted only in light theme (the default, blurred one) — clear glass
-    // in dark theme like everything else once its blur is switched off.
-    // Wraps the live-match and tie-break cards.
+    // Same as card, just a stronger blur — wraps the live-match and
+    // tie-break cards.
     cardFrosted: {
-      background: dark ? T.cardBg : T.cardBgFrosted,
+      background: T.cardBg,
       backdropFilter: dark ? "none" : "blur(28px) saturate(180%)",
       WebkitBackdropFilter: dark ? "none" : "blur(28px) saturate(180%)",
       border: `1px solid ${T.cardBorder}`,
@@ -701,7 +709,7 @@ function makeStyles(dark) {
     },
     h2: { fontFamily: "'Fraunces', serif", fontSize: "17px", fontWeight: 600, margin: "0 0 12px", color: dark ? "#E7CE93" : COLORS.wood, borderLeft: `3px solid ${COLORS.brass}`, paddingLeft: "10px" },
     addRow: { display: "flex", gap: "8px" },
-    input: { flex: 1, padding: "10px 12px", borderRadius: "8px", border: `1px solid ${T.inputBorder}`, fontSize: "14px", background: T.inputBg, color: T.text },
+    input: { flex: 1, padding: "10px 12px", borderRadius: "8px", border: `1px solid ${T.inputBorder}`, fontSize: "14px", background: T.inputBg, color: T.solidText },
     brassBtn: { padding: "10px 16px", borderRadius: "8px", border: "none", background: COLORS.brass, color: "#2C1D08", fontWeight: 700, fontSize: "13px" },
     errorText: { color: "#E08877", fontSize: "12.5px", marginTop: "8px" },
     emptyText: { color: T.sub, fontSize: "13.5px", fontStyle: "italic" },
@@ -712,7 +720,7 @@ function makeStyles(dark) {
       gap: "6px",
       padding: "6px 6px 6px 12px",
       borderRadius: "999px",
-      background: dark ? T.cardBg : T.cardBgFrosted,
+      background: T.cardBg,
       backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       border: `1px solid ${T.chipBorder}`,
@@ -722,11 +730,14 @@ function makeStyles(dark) {
     },
     chipRemove: { border: "none", background: "transparent", color: T.sub, fontSize: "16px", lineHeight: 1, width: "20px", height: "20px", borderRadius: "50%" },
     hint: { fontSize: "12.5px", color: T.sub, margin: "4px 0 0" },
+    // Same as hint, but for text inside modals (solid/opaque surfaces —
+    // see T.solidSub for why it needs a different color there).
+    modalHint: { fontSize: "12.5px", color: T.solidSub, margin: "4px 0 0" },
     selectChip: {
       padding: "8px 14px",
       borderRadius: "999px",
       border: `1.5px solid ${COLORS.chalk}`,
-      background: dark ? T.cardBg : T.cardBgFrosted,
+      background: T.cardBg,
       backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       color: COLORS.chalk,
@@ -739,7 +750,7 @@ function makeStyles(dark) {
       padding: "9px 14px",
       borderRadius: "8px",
       border: `1.5px solid ${COLORS.chalk}`,
-      background: dark ? T.cardBg : T.cardBgFrosted,
+      background: T.cardBg,
       backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       color: COLORS.chalk,
@@ -756,7 +767,7 @@ function makeStyles(dark) {
       marginTop: "12px",
       padding: "10px 12px",
       borderRadius: "10px",
-      background: dark ? T.cardBg : T.cardBgFrosted,
+      background: T.cardBg,
       backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       border: `1px solid ${dark ? "rgba(231,206,147,0.35)" : "#E7CE93"}`,
@@ -786,7 +797,7 @@ function makeStyles(dark) {
       justifyContent: "space-between",
       padding: "12px 14px",
       borderRadius: "12px",
-      background: dark ? T.cardBg : T.cardBgFrosted,
+      background: T.cardBg,
       backdropFilter: dark ? "none" : "blur(22px) saturate(160%)",
       WebkitBackdropFilter: dark ? "none" : "blur(22px) saturate(160%)",
       border: `1px solid ${dark ? "rgba(255,255,255,0.10)" : T.cardBorder}`,
@@ -943,9 +954,9 @@ function makeStyles(dark) {
     switchThumb: { position: "absolute", top: "3px", left: "3px", width: "20px", height: "20px", borderRadius: "50%", background: "#fff", transition: "left 0.15s" },
     switchThumbOn: { left: "23px" },
     modalOverlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", zIndex: 50 },
-    modalCard: { background: T.modalBg, borderRadius: "16px", padding: "20px", maxWidth: "400px", width: "100%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 10px 30px rgba(0,0,0,0.4)", color: T.text },
+    modalCard: { background: T.modalBg, borderRadius: "16px", padding: "20px", maxWidth: "400px", width: "100%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 10px 30px rgba(0,0,0,0.4)", color: T.solidText },
     modalScores: { display: "flex", flexDirection: "column", gap: "6px", margin: "12px 0" },
-    modalRow: { display: "flex", justifyContent: "space-between", fontSize: "14px", padding: "6px 0", borderBottom: `1px solid ${T.rowBorder}`, color: T.text },
+    modalRow: { display: "flex", justifyContent: "space-between", fontSize: "14px", padding: "6px 0", borderBottom: `1px solid ${T.rowBorder}`, color: T.solidText },
   };
 }
 
@@ -3358,7 +3369,7 @@ export default function BilliardsTracker() {
                     </div>
                   ))}
                 </div>
-                {!selectedMatch.solo && <p style={styles.hint}>Победитель определится автоматически по наибольшему счёту.</p>}
+                {!selectedMatch.solo && <p style={styles.modalHint}>Победитель определится автоматически по наибольшему счёту.</p>}
                 <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
                   <button style={{ ...styles.brassBtn, flex: 1 }} onClick={saveEditMatch}>
                     Сохранить
@@ -3382,27 +3393,27 @@ export default function BilliardsTracker() {
                     </div>
                   ))}
                 </div>
-                <p style={styles.hint}>Начинал: {selectedMatch.breakerId ? nameById(selectedMatch.breakerId) : "не указано"}</p>
+                <p style={styles.modalHint}>Начинал: {selectedMatch.breakerId ? nameById(selectedMatch.breakerId) : "не указано"}</p>
                 {selectedMatch.breakerId && (
-                  <p style={styles.hint}>
+                  <p style={styles.modalHint}>
                     Забил при разборе:{" "}
                     {selectedMatch.breakerPotted === true ? "Да" : selectedMatch.breakerPotted === false ? "Нет" : "не указано"}
                   </p>
                 )}
-                <p style={styles.hint}>
+                <p style={styles.modalHint}>
                   {selectedMatch.solo ? "Тип: тренировка (соло)" : `Победитель: ${nameById(selectedMatch.winnerId)}`}
                 </p>
-                <p style={styles.hint}>
+                <p style={styles.modalHint}>
                   Дисциплина: <GameIcon type={selectedMatch.gameType || "russian"} size={13} />{" "}
                   {GAME_TYPES[selectedMatch.gameType || "russian"].label}
                   {selectedMatch.mode && RUSSIAN_MODES[selectedMatch.mode]
                     ? ` · ${RUSSIAN_MODES[selectedMatch.mode].name} (${RUSSIAN_MODES[selectedMatch.mode].alias})`
                     : ""}
                 </p>
-                <p style={styles.hint}>Продолжительность: {formatDuration(selectedMatch.durationMs)}</p>
+                <p style={styles.modalHint}>Продолжительность: {formatDuration(selectedMatch.durationMs)}</p>
                 {selectedMatch.settlement && (
                   <>
-                    <p style={styles.hint}>Круговой расчёт (разница очков между парами):</p>
+                    <p style={styles.modalHint}>Круговой расчёт (разница очков между парами):</p>
                     <KolhozTable
                       participants={selectedMatch.participants}
                       settlement={selectedMatch.settlement}
@@ -3615,7 +3626,7 @@ export default function BilliardsTracker() {
                   {isOpen && (
                     <div style={{ paddingBottom: "10px" }}>
                       {m.rules.map((r, i) => (
-                        <p key={i} style={{ ...styles.hint, margin: "2px 0" }}>
+                        <p key={i} style={{ ...styles.modalHint, margin: "2px 0" }}>
                           • {r}
                         </p>
                       ))}
