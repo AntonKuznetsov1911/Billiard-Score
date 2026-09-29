@@ -895,10 +895,12 @@ function makeStyles(dark) {
       textShadow: "0 2px 6px rgba(0,0,0,0.35)",
       textAlign: "center",
     },
-    fsZoneScoreWrap: { display: "inline-block", willChange: "transform" },
+    fsZoneScoreWrap: { display: "inline-block" },
     fsZoneScore: {
       fontFamily: "'Space Mono', monospace",
       fontSize: "min(26vw, 108px)",
+      minWidth: "2ch",
+      textAlign: "center",
       fontWeight: 700,
       color: "#FBEFD2",
       background: "transparent",
@@ -1160,7 +1162,14 @@ export default function BilliardsTracker() {
       }
     })();
     const unsubscribe = subscribeClubState(club.id, (remoteData, updatedAt) => {
-      setData(normalizeData({ ...remoteData, updatedAt }));
+      // Ignore snapshots that are not newer than what we already have — that includes
+      // the echo of our own earlier push arriving after newer local taps, which would
+      // otherwise roll the score back and then forward again.
+      setData((prev) => {
+        const remoteStamp = (remoteData && remoteData.updatedAt) || updatedAt;
+        if (prev.updatedAt && remoteStamp <= prev.updatedAt) return prev;
+        return normalizeData({ ...remoteData, updatedAt: remoteStamp });
+      });
     });
     return () => {
       active = false;
@@ -1492,13 +1501,6 @@ export default function BilliardsTracker() {
       const actionLog = [...(prev.activeGame.actionLog || []), { pid: playerId, prev: before }].slice(-5);
       return { ...prev, activeGame: { ...prev.activeGame, scores, actionLog } };
     });
-  };
-
-  // Pulses a big-mode score without touching React state or remounting the
-  // number: a transform-only Web Animation on an already-promoted layer.
-  const pulseScore = (zoneEl) => {
-    const el = zoneEl && zoneEl.querySelector("[data-score-pulse]");
-    if (el && el.animate) el.animate([{ transform: "scale(1)" }, { transform: "scale(1.18)" }, { transform: "scale(1)" }], { duration: 200, easing: "ease-out" });
   };
 
   const setScore = (playerId, value) => {
@@ -2644,7 +2646,6 @@ export default function BilliardsTracker() {
                               background: `radial-gradient(120% 90% at 50% 0%, ${playerColor(pid)}b3 0%, ${playerColor(pid)}3d 38%, rgba(10,26,20,0.98) 82%)`,
                             }}
                             onPointerDown={(e) => {
-                              pulseScore(e.currentTarget);
                               addPoint(pid, isPoints ? ballValue : 1, { fast: true });
                             }}
                             onClick={(e) => {
