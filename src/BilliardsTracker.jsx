@@ -32,8 +32,23 @@ import {
   buildBracketRounds,
   bracketRoundLabel,
   buildKolhozSettlement,
+  filterMatches,
+  computeElo,
+  computeHeadToHeadMatrix,
+  computePlayerProfile,
+  computeActivity,
+  buildMatchTempo,
+  buildPeriodSummary,
 } from "./gameLogic.js";
 import Onboarding from "./Onboarding.jsx";
+import {
+  StatsFilters,
+  PlayerProfileModal,
+  HeadToHeadMatrix,
+  ActivityCard,
+  SummaryCard,
+  PERIOD_LABELS,
+} from "./StatsExtras.jsx";
 
 const RatingChartPanel = lazy(() => import("./RatingChart.jsx").then((m) => ({ default: m.RatingChartPanel })));
 
@@ -990,6 +1005,9 @@ export default function BilliardsTracker() {
   const [ballValue, setBallValue] = useState(5);
   const [handicaps, setHandicaps] = useState({});
   const [h2h, setH2h] = useState({ a: "", b: "" });
+  const [statsFilter, setStatsFilter] = useState({ period: "all", gameType: "all", mode: "all" });
+  const [ratingSortElo, setRatingSortElo] = useState(false);
+  const [profilePid, setProfilePid] = useState(null);
   const [victory, setVictory] = useState(null);
   const [seriesPick, setSeriesPick] = useState(1);
   const [scorePulse, setScorePulse] = useState({ pid: null, ts: 0 });
@@ -1990,16 +2008,33 @@ export default function BilliardsTracker() {
     return list;
   }, [sortedHistory, dateFilter, historyNameFilter, nameById]);
 
-  const chartData = useMemo(
-    () => stats.map((s) => ({ name: s.name, Победы: s.wins, Поражения: s.losses, "% побед": s.winPct })),
-    [stats]
+  // Everything on the Рейтинг tab except achievements follows the filters.
+  const fMatches = useMemo(() => filterMatches(data.matches, statsFilter), [data.matches, statsFilter]);
+  const fStats = useMemo(() => computeStats(data.players, fMatches), [data.players, fMatches]);
+  const elo = useMemo(() => computeElo(data.players, fMatches), [data.players, fMatches]);
+  const ranked = useMemo(
+    () => (ratingSortElo ? [...fStats].sort((a, b) => elo[b.id].rating - elo[a.id].rating) : fStats),
+    [fStats, elo, ratingSortElo]
+  );
+  const h2hMatrix = useMemo(() => computeHeadToHeadMatrix(data.players, fMatches), [data.players, fMatches]);
+  const activity = useMemo(() => computeActivity(fMatches), [fMatches]);
+  const tempoData = useMemo(() => buildMatchTempo(fMatches), [fMatches]);
+  const summary = useMemo(() => buildPeriodSummary(data.players, fMatches), [data.players, fMatches]);
+  const profile = useMemo(
+    () => (profilePid ? computePlayerProfile(profilePid, data.players, fMatches) : null),
+    [profilePid, data.players, fMatches]
   );
 
-  const trendData = useMemo(() => buildRatingTrend(data.players, data.matches), [data.players, data.matches]);
+  const chartData = useMemo(
+    () => fStats.map((s) => ({ name: s.name, Победы: s.wins, Поражения: s.losses, "% побед": s.winPct })),
+    [fStats]
+  );
+
+  const trendData = useMemo(() => buildRatingTrend(data.players, fMatches), [data.players, fMatches]);
 
   const streakLeaders = useMemo(
-    () => [...stats].filter((s) => s.bestStreak > 0).sort((a, b) => b.bestStreak - a.bestStreak).slice(0, 5),
-    [stats]
+    () => [...fStats].filter((s) => s.bestStreak > 0).sort((a, b) => b.bestStreak - a.bestStreak).slice(0, 5),
+    [fStats]
   );
 
   const playerColor = useCallback(
@@ -2011,14 +2046,14 @@ export default function BilliardsTracker() {
     [data.players]
   );
 
-  const records = useMemo(() => computeRecords(data.matches), [data.matches]);
+  const records = useMemo(() => computeRecords(fMatches), [fMatches]);
 
   const achievements = useMemo(() => computeAchievements(stats, data.matches), [stats, data.matches]);
 
   const h2hStats = useMemo(() => {
     const { a, b } = h2h;
     if (!a || !b || a === b) return null;
-    const ms = data.matches.filter((m) => !m.solo && m.participants.length === 2 && m.participants.includes(a) && m.participants.includes(b));
+    const ms = fMatches.filter((m) => !m.solo && m.participants.length === 2 && m.participants.includes(a) && m.participants.includes(b));
     let wa = 0;
     let wb = 0;
     let ba = 0;
@@ -2030,7 +2065,7 @@ export default function BilliardsTracker() {
       bb += (m.scores && m.scores[b]) || 0;
     });
     return { games: ms.length, wa, wb, ba, bb };
-  }, [h2h, data.matches]);
+  }, [h2h, fMatches]);
 
   const selectedMatch = useMemo(
     () => data.matches.find((m) => m.id === selectedMatchId) || null,
@@ -2862,13 +2897,16 @@ export default function BilliardsTracker() {
 
           {tab === "rating" && (
             <section>
+              <StatsFilters filters={statsFilter} onChange={setStatsFilter} styles={styles} />
+
               <div style={styles.card}>
                 <h2 style={styles.h2}>Статистика</h2>
                 <Suspense fallback={<div style={{ ...styles.hint, textAlign: "center", padding: "40px 0" }}>Загрузка графика…</div>}>
                   <RatingChartPanel
                     trendData={trendData}
                     chartData={chartData}
-                    stats={stats}
+                    tempoData={tempoData}
+                    stats={fStats}
                     players={data.players}
                     dark={dark}
                     hintColor={styles.hint.color}
@@ -2879,20 +2917,43 @@ export default function BilliardsTracker() {
 
               <div style={styles.card}>
                 <h2 style={styles.h2}>Рейтинг игроков</h2>
-                {stats.length === 0 ? (
+                {fStats.length === 0 ? (
                   <EmptyState text="Пока нет данных — сыграйте первую партию" />
                 ) : (
-                  <ol style={styles.rankList}>
-                    {stats.map((s, i) => (
-                      <li key={s.id} style={styles.rankItem}>
-                        <span style={styles.rankMedal}>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}</span>
-                        <span style={styles.rankName}>
-                          <PlayerBall color={playerColor(s.id)} /> {s.name}
-                        </span>
-                        <span style={styles.rankScore}>{s.wins} побед · {s.winPct}%</span>
-                      </li>
-                    ))}
-                  </ol>
+                  <>
+                    <div style={{ display: "flex", gap: "6px", marginBottom: "8px" }}>
+                      {[[false, "По победам"], [true, "По Эло"]].map(([v, label]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => setRatingSortElo(v)}
+                          style={{ ...styles.selectChip, padding: "5px 12px", fontSize: "12px", ...(ratingSortElo === v ? styles.selectChipActive : {}) }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <ol style={styles.rankList}>
+                      {ranked.map((s, i) => (
+                        <li
+                          key={s.id}
+                          style={{ ...styles.rankItem, cursor: "pointer" }}
+                          onClick={() => setProfilePid(s.id)}
+                          role="button"
+                          aria-label={`Профиль: ${s.name}`}
+                        >
+                          <span style={styles.rankMedal}>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`}</span>
+                          <span style={styles.rankName}>
+                            <PlayerBall color={playerColor(s.id)} /> {s.name}
+                          </span>
+                          <span style={styles.rankScore}>
+                            {s.wins} поб. · {s.winPct}% · Эло {elo[s.id].rating}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                    <p style={styles.hint}>Нажмите на игрока — откроется его карточка. Эло: старт 1000, учитывает силу соперника.</p>
+                  </>
                 )}
               </div>
 
@@ -2982,6 +3043,7 @@ export default function BilliardsTracker() {
                   <p style={styles.emptyText}>Нужно минимум два игрока.</p>
                 ) : (
                   <div>
+                    <HeadToHeadMatrix players={data.players} matrix={h2hMatrix} playerColor={playerColor} styles={styles} />
                     <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                       <select
                         value={h2h.a}
@@ -3034,8 +3096,18 @@ export default function BilliardsTracker() {
               </div>
 
               <div style={styles.card}>
+                <h2 style={styles.h2}>Активность</h2>
+                <ActivityCard activity={activity} styles={styles} />
+              </div>
+
+              <div style={styles.card}>
+                <h2 style={styles.h2}>Итоги {PERIOD_LABELS[statsFilter.period]}</h2>
+                <SummaryCard summary={summary} periodLabel={PERIOD_LABELS[statsFilter.period]} styles={styles} />
+              </div>
+
+              <div style={styles.card}>
                 <h2 style={styles.h2}>Статистика по игрокам</h2>
-                {stats.length === 0 ? (
+                {fStats.length === 0 ? (
                   <p style={styles.emptyText}>Сыгранных партий пока нет.</p>
                 ) : (
                   <div style={{ overflowX: "auto" }}>
@@ -3056,7 +3128,7 @@ export default function BilliardsTracker() {
                         </tr>
                       </thead>
                       <tbody>
-                        {stats.map((s, i) => (
+                        {fStats.map((s, i) => (
                           <tr key={s.id} style={i === 0 && s.wins > 0 ? styles.leaderRow : undefined}>
                             <td style={styles.td}>{s.name}</td>
                             <td style={{ ...styles.td, ...styles.mono }}>{s.games}</td>
@@ -3653,6 +3725,18 @@ export default function BilliardsTracker() {
             </div>
           </div>
         </div>
+      )}
+
+      {profile && (
+        <PlayerProfileModal
+          profile={profile}
+          name={nameById(profilePid)}
+          color={playerColor(profilePid)}
+          elo={elo[profilePid]}
+          nameById={nameById}
+          onClose={() => setProfilePid(null)}
+          styles={styles}
+        />
       )}
 
       {rulesOpen && (
