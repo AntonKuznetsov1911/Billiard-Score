@@ -190,10 +190,30 @@ export function MatchSummaryChart({ chartData, dark, hintColor }) {
   );
 }
 
+// Balls scored (bars) and minutes played (line) per match, latest matches.
+export function MatchTempoChart({ tempoData, dark, hintColor }) {
+  return (
+    <div style={{ width: "100%", height: 230 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={tempoData} margin={{ top: 10, right: 6, left: -22, bottom: 0 }}>
+          <CartesianGrid vertical={false} stroke={dark ? "#ffffff14" : "#00000012"} />
+          <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10.5, fill: hintColor, fontWeight: 600 }} />
+          <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: hintColor }} />
+          <Tooltip content={<ChartTooltip dark={dark} />} cursor={{ fill: dark ? "#ffffff0a" : "#00000008" }} />
+          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "11px", fontWeight: 600, color: hintColor }} />
+          <Bar dataKey="Шары" fill="#3FA579" radius={[5, 5, 0, 0]} maxBarSize={18} />
+          <Line type="monotone" dataKey="Минуты" stroke="#C08A3E" strokeWidth={2.25} dot={{ r: 2.5, fill: "#C08A3E", strokeWidth: 0 }} />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 const VIEWS = [
   { key: "trend", label: "Динамика", hint: "Процент побед нарастающим итогом после каждой партии" },
   { key: "bar", label: "Рейтинг", hint: "Текущий % побед по каждому игроку" },
   { key: "summary", label: "Матчи", hint: "Победы, поражения и % побед по партиям" },
+  { key: "tempo", label: "Темп", hint: "Шары и минуты в последних партиях" },
 ];
 
 function segmentStyles(dark) {
@@ -227,11 +247,11 @@ function segmentStyles(dark) {
 // Single unified rating panel — a segmented switch picks which of the three
 // chart views to show, so the Рейтинг tab has one chart window instead of
 // three separate cards.
-export function RatingChartPanel({ trendData, chartData, stats, players, dark, hintColor, playerColor }) {
+export function RatingChartPanel({ trendData, chartData, tempoData = [], stats, players, dark, hintColor, playerColor }) {
   const [view, setView] = useState("trend");
   const st = segmentStyles(dark);
   const active = VIEWS.find((v) => v.key === view);
-  const empty = view === "trend" ? trendData.length === 0 : stats.length === 0;
+  const empty = view === "trend" ? trendData.length === 0 : view === "tempo" ? tempoData.length === 0 : stats.length === 0;
 
   return (
     <div>
@@ -259,6 +279,7 @@ export function RatingChartPanel({ trendData, chartData, stats, players, dark, h
           )}
           {view === "bar" && <WinRateBarChart stats={stats} dark={dark} hintColor={hintColor} playerColor={playerColor} />}
           {view === "summary" && <MatchSummaryChart chartData={chartData} dark={dark} hintColor={hintColor} />}
+          {view === "tempo" && <MatchTempoChart tempoData={tempoData} dark={dark} hintColor={hintColor} />}
         </div>
       )}
     </div>

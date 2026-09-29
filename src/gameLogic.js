@@ -262,3 +262,202 @@ export function buildKolhozSettlement(participants, scores) {
   });
   return matrix;
 }
+
+// ---------------------------------------------------------------------------
+// Statistics helpers for the Рейтинг tab
+// ---------------------------------------------------------------------------
+
+const DAY_MS = 86400000;
+
+// period: "all" | "week" (last 7 days) | "month" (last 30 days)
+// gameType: "all" | "russian" | "pool"; mode: "all" | a RUSSIAN_MODES key
+export function filterMatches(matches, { period = "all", gameType = "all", mode = "all" } = {}, now = Date.now()) {
+  const from = period === "week" ? now - 7 * DAY_MS : period === "month" ? now - 30 * DAY_MS : null;
+  return matches.filter((m) => {
+    if (from !== null && new Date(m.date).getTime() < from) return false;
+    const gt = m.gameType || "russian";
+    if (gameType !== "all" && gt !== gameType) return false;
+    if (mode !== "all" && (gt !== "russian" || (m.mode || "free") !== mode)) return false;
+    return true;
+  });
+}
+
+// Elo over head-to-head matches in chronological order. In games with more
+// than two players the winner is rated against each loser, K split evenly.
+export function computeElo(players, matches, { k = 32, start = 1000 } = {}) {
+  const rating = {};
+  const games = {};
+  players.forEach((p) => {
+    rating[p.id] = start;
+    games[p.id] = 0;
+  });
+  matches
+    .filter((m) => !m.solo && m.winnerId && rating[m.winnerId] !== undefined)
+    .slice()
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .forEach((m) => {
+      const losers = m.participants.filter((pid) => pid !== m.winnerId && rating[pid] !== undefined);
+      if (!losers.length) return;
+      const before = { ...rating };
+      const kk = k / losers.length;
+      losers.forEach((lid) => {
+        const expectedWin = 1 / (1 + Math.pow(10, (before[lid] - before[m.winnerId]) / 400));
+        rating[m.winnerId] += kk * (1 - expectedWin);
+        rating[lid] -= kk * (1 - expectedWin);
+      });
+      games[m.winnerId] += 1;
+      losers.forEach((lid) => (games[lid] += 1));
+    });
+  const out = {};
+  Object.keys(rating).forEach((id) => (out[id] = { rating: Math.round(rating[id]), games: games[id] }));
+  return out;
+}
+
+// wins/losses of every player against every other one (pairwise; in a
+// multi-player game the winner beats each loser, losers don't count vs each other).
+export function computeHeadToHeadMatrix(players, matches) {
+  const matrix = {};
+  players.forEach((a) => {
+    matrix[a.id] = {};
+    players.forEach((b) => {
+      if (a.id !== b.id) matrix[a.id][b.id] = { wins: 0, losses: 0 };
+    });
+  });
+  matches
+    .filter((m) => !m.solo && m.winnerId)
+    .forEach((m) => {
+      m.participants.forEach((pid) => {
+        if (pid === m.winnerId || !matrix[m.winnerId] || !matrix[m.winnerId][pid]) return;
+        matrix[m.winnerId][pid].wins += 1;
+        matrix[pid][m.winnerId].losses += 1;
+      });
+    });
+  return matrix;
+}
+
+export function computePlayerProfile(playerId, players, matches) {
+  const mine = matches
+    .filter((m) => m.participants.includes(playerId))
+    .slice()
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  const vs = mine.filter((m) => !m.solo);
+  const wins = vs.filter((m) => m.winnerId === playerId).length;
+
+  const byType = {};
+  vs.forEach((m) => {
+    const gt = m.gameType || "russian";
+    byType[gt] = (byType[gt] || 0) + 1;
+  });
+  const favoriteGameType = Object.keys(byType).sort((a, b) => byType[b] - byType[a])[0] || null;
+
+  let own = 0;
+  let opp = 0;
+  vs.forEach((m) => {
+    own += (m.scores && m.scores[playerId]) || 0;
+    const others = m.participants.filter((p) => p !== playerId).map((p) => (m.scores && m.scores[p]) || 0);
+    opp += others.length ? Math.max(...others) : 0;
+  });
+
+  const matrix = computeHeadToHeadMatrix(players, matches);
+  const row = matrix[playerId] || {};
+  let nemesis = null;
+  let victim = null;
+  Object.keys(row).forEach((oid) => {
+    const r = row[oid];
+    if (r.wins + r.losses < 2) return;
+    if (r.losses > r.wins && (!nemesis || r.losses - r.wins > nemesis.losses - nemesis.wins)) nemesis = { id: oid, ...r };
+    if (r.wins > r.losses && (!victim || r.wins - r.losses > victim.wins - victim.losses)) victim = { id: oid, ...r };
+  });
+
+  const breaking = { asBreaker: { games: 0, wins: 0 }, other: { games: 0, wins: 0 } };
+  vs.forEach((m) => {
+    if (!m.breakerId) return;
+    const bucket = m.breakerId === playerId ? breaking.asBreaker : breaking.other;
+    bucket.games += 1;
+    if (m.winnerId === playerId) bucket.wins += 1;
+  });
+
+  return {
+    games: vs.length,
+    wins,
+    form: vs.slice(-5).map((m) => (m.winnerId === playerId ? "W" : "L")),
+    favoriteGameType,
+    avgOwn: vs.length ? own / vs.length : 0,
+    avgOpp: vs.length ? opp / vs.length : 0,
+    totalDurationMs: mine.reduce((sum, m) => sum + (m.durationMs > 0 ? m.durationMs : 0), 0),
+    nemesis,
+    victim,
+    breaking,
+  };
+}
+
+// Weekday (Mon=0..Sun=6) and part-of-day distribution, total table time and a
+// 10-week calendar (columns = weeks, rows = Mon..Sun) ending with the current week.
+export function computeActivity(matches, now = Date.now()) {
+  const weekday = [0, 0, 0, 0, 0, 0, 0];
+  const dayPart = { morning: 0, day: 0, evening: 0, night: 0 };
+  const perDay = {};
+  let totalDurationMs = 0;
+  const dayKey = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  matches.forEach((m) => {
+    const d = new Date(m.date);
+    weekday[(d.getDay() + 6) % 7] += 1;
+    const h = d.getHours();
+    if (h >= 5 && h < 11) dayPart.morning += 1;
+    else if (h >= 11 && h < 17) dayPart.day += 1;
+    else if (h >= 17 && h < 23) dayPart.evening += 1;
+    else dayPart.night += 1;
+    perDay[dayKey(d)] = (perDay[dayKey(d)] || 0) + 1;
+    if (m.durationMs > 0) totalDurationMs += m.durationMs;
+  });
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  const weeks = [];
+  for (let w = 9; w >= 0; w--) {
+    const col = [];
+    for (let d = 0; d < 7; d++) {
+      const cell = new Date(monday);
+      cell.setDate(monday.getDate() - w * 7 + d);
+      col.push({ date: cell.getTime(), count: cell > today ? null : perDay[dayKey(cell)] || 0 });
+    }
+    weeks.push(col);
+  }
+  return { weekday, dayPart, totalDurationMs, weeks, games: matches.length };
+}
+
+// Balls scored and minutes per match, in order — the "tempo" chart.
+export function buildMatchTempo(matches, limit = 30) {
+  return matches
+    .filter((m) => m.durationMs > 0)
+    .slice()
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .slice(-limit)
+    .map((m, i) => ({
+      index: i + 1,
+      date: new Date(m.date).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }),
+      Шары: m.participants.reduce((s, pid) => s + ((m.scores && m.scores[pid]) || 0), 0),
+      Минуты: Math.max(1, Math.round(m.durationMs / 60000)),
+    }));
+}
+
+// Headline numbers for the shareable "итоги" card. null when there is nothing to show.
+export function buildPeriodSummary(players, matches) {
+  if (!matches.length) return null;
+  const stats = computeStats(players, matches).filter((s) => s.games > 0);
+  const vs = matches.filter((m) => !m.solo);
+  const mvp = stats.filter((s) => s.wins > 0)[0] || null; // computeStats sorts by wins, then win %
+  const streak = stats.slice().sort((a, b) => b.bestStreak - a.bestStreak)[0];
+  const balls = stats.slice().sort((a, b) => b.totalBalls - a.totalBalls)[0];
+  const records = computeRecords(matches);
+  return {
+    games: matches.length,
+    durationMs: matches.reduce((s, m) => s + (m.durationMs > 0 ? m.durationMs : 0), 0),
+    mvp: mvp && { name: mvp.name, wins: mvp.wins, winPct: mvp.winPct },
+    streak: streak && streak.bestStreak > 1 ? { name: streak.name, value: streak.bestStreak } : null,
+    balls: balls && balls.totalBalls > 0 ? { name: balls.name, value: balls.totalBalls } : null,
+    blowMargin: records.blow && records.blowMargin > 0 ? records.blowMargin : 0,
+    vsGames: vs.length,
+  };
+}
