@@ -130,7 +130,7 @@ export async function getMyClub() {
   if (!user) return null;
   const { data, error } = await supabase
     .from("club_members")
-    .select("club_id, clubs ( id, code, name )")
+    .select("club_id, clubs ( id, code, name, created_by )")
     .eq("user_id", user.id)
     .limit(1)
     .maybeSingle();
@@ -173,4 +173,30 @@ export function subscribeClubState(clubId, onChange) {
     )
     .subscribe();
   return () => client.removeChannel(channel);
+}
+
+// Change history of the shared club state (append-only on the server, see
+// supabase/history.sql). Snapshots are listed without their (large) data.
+export async function listClubHistory(clubId, limit = 60) {
+  const client = requireClient();
+  const { data, error } = await client
+    .from("club_state_history")
+    .select("id, saved_at, replaced_by, matches_count, players_count, reason")
+    .eq("club_id", clubId)
+    .order("saved_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
+// Creator-only; the server also snapshots the current state first, so a restore can be undone.
+export async function restoreClubHistory(historyId) {
+  const client = requireClient();
+  const { error } = await client.rpc("restore_club_state", { p_history_id: historyId });
+  if (error) {
+    if (error.code === "42501" || /only_creator/.test(error.message || "")) {
+      throw new Error("Восстанавливать может только создатель клуба");
+    }
+    throw error;
+  }
 }

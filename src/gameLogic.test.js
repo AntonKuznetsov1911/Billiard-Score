@@ -15,6 +15,8 @@ import {
   computeActivity,
   buildMatchTempo,
   buildPeriodSummary,
+  moveMatchToTrash,
+  restoreMatchFromTrash,
   buildBracketRounds,
   bracketRoundLabel,
   buildKolhozSettlement,
@@ -493,5 +495,44 @@ describe("normalizeData treats input as untrusted", () => {
     expect(normalizeData({ activeGame: { participants: "a", scores: {} } }).activeGame).toBeNull();
     const g = normalizeData({ activeGame: { participants: ["a"], scores: { a: 2 }, actionLog: [1, { pid: "a", prev: 1 }] } }).activeGame;
     expect(g.actionLog).toEqual([{ pid: "a", prev: 1 }]);
+  });
+});
+
+describe("match trash", () => {
+  const base = () => ({
+    matches: [
+      { id: "m1", participants: ["a", "b"], winnerId: "a", seriesId: "s1" },
+      { id: "m2", participants: ["a", "b"], winnerId: "b" },
+    ],
+    trash: [],
+    activeSeries: { id: "s1", wins: { a: 1 } },
+  });
+  it("moves a match to the trash instead of losing it, and undoes its series win", () => {
+    const out = moveMatchToTrash(base(), "m1", 123);
+    expect(out.matches.map((m) => m.id)).toEqual(["m2"]);
+    expect(out.trash).toHaveLength(1);
+    expect(out.trash[0]).toMatchObject({ id: "m1", deletedAt: 123 });
+    expect(out.activeSeries.wins.a).toBe(0);
+  });
+  it("restores it with the series win back", () => {
+    const back = restoreMatchFromTrash(moveMatchToTrash(base(), "m1", 1), "m1");
+    expect(back.matches.map((m) => m.id).sort()).toEqual(["m1", "m2"]);
+    expect(back.trash).toEqual([]);
+    expect(back.matches.find((m) => m.id === "m1").deletedAt).toBeUndefined();
+    expect(back.activeSeries.wins.a).toBe(1);
+  });
+  it("ignores unknown ids and caps the trash", () => {
+    const d = base();
+    expect(moveMatchToTrash(d, "nope")).toBe(d);
+    expect(restoreMatchFromTrash(d, "nope")).toBe(d);
+    let cur = { matches: Array.from({ length: 320 }, (_, i) => ({ id: "x" + i, participants: ["a"] })), trash: [], activeSeries: null };
+    for (let i = 0; i < 320; i++) cur = moveMatchToTrash(cur, "x" + i, i);
+    expect(cur.trash).toHaveLength(300);
+  });
+  it("normalizeData keeps the trash and sanitizes it", () => {
+    const out = normalizeData({ trash: [{ id: "t", participants: ["a"], date: "2024-01-01", deletedAt: 5 }, { junk: true }] });
+    expect(out.trash).toHaveLength(1);
+    expect(out.trash[0].deletedAt).toBe(5);
+    expect(normalizeData({}).trash).toEqual([]);
   });
 });

@@ -15,6 +15,9 @@ import {
   fetchClubState,
   pushClubState,
   subscribeClubState,
+  getClubMembers,
+  listClubHistory,
+  restoreClubHistory,
 } from "./clubSync.js";
 import tableRussianPhoto from "./assets/table-russian.jpg";
 import tablePoolPhoto from "./assets/table-pool.jpg";
@@ -39,7 +42,11 @@ import {
   computeActivity,
   buildMatchTempo,
   buildPeriodSummary,
+  moveMatchToTrash,
+  restoreMatchFromTrash,
 } from "./gameLogic.js";
+import { listSafetyCopies, saveSafetyCopy, maybeAutoSafetyCopy } from "./safety.js";
+import { TrashCard, SafetyCopies, ClubHistoryModal } from "./HistoryUI.jsx";
 import Onboarding from "./Onboarding.jsx";
 import {
   StatsFilters,
@@ -1008,6 +1015,17 @@ export default function BilliardsTracker() {
   const [statsFilter, setStatsFilter] = useState({ period: "all", gameType: "all", mode: "all" });
   const [ratingSortElo, setRatingSortElo] = useState(false);
   const [profilePid, setProfilePid] = useState(null);
+  const [safetyCopies, setSafetyCopies] = useState(() => {
+    try {
+      return listSafetyCopies(window.localStorage);
+    } catch (e) {
+      return [];
+    }
+  });
+  const [clubHistory, setClubHistory] = useState(undefined); // undefined = closed, null = loading, [] = loaded
+  const [clubMembers, setClubMembers] = useState([]);
+  const [clubHistoryBusy, setClubHistoryBusy] = useState(false);
+  const [clubHistoryError, setClubHistoryError] = useState("");
   const [victory, setVictory] = useState(null);
   const [seriesPick, setSeriesPick] = useState(1);
   const [scorePulse, setScorePulse] = useState({ pid: null, ts: 0 });
@@ -1115,6 +1133,17 @@ export default function BilliardsTracker() {
     setGameType(type);
     setTimeout(() => setMenuVisible(true), 1000);
   };
+
+  useEffect(() => {
+    if (!loaded) return;
+    try {
+      maybeAutoSafetyCopy(window.localStorage, data);
+      setSafetyCopies(listSafetyCopies(window.localStorage));
+    } catch (e) {
+      // storage unavailable — not critical
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
 
   const dismissOnboarding = useCallback(() => {
     setShowOnboarding(false);
@@ -1311,7 +1340,30 @@ export default function BilliardsTracker() {
     setNameInput("");
   };
 
+  const takeSafetyCopy = (reason) => {
+    try {
+      saveSafetyCopy(window.localStorage, data, reason);
+      setSafetyCopies(listSafetyCopies(window.localStorage));
+    } catch (e) {
+      // storage unavailable — not critical
+    }
+  };
+
+  const restoreSafetyCopy = (copy) => {
+    if (!window.confirm(`Вернуть копию от ${new Date(copy.ts).toLocaleString("ru-RU")}? Текущие данные будут заменены (их копия сохранится).`)) return;
+    takeSafetyCopy("before-restore");
+    updateData(() => normalizeData(copy.data));
+    haptic("success");
+  };
+
+  const restoreTrashed = (id) => {
+    haptic("light");
+    updateData((prev) => restoreMatchFromTrash(prev, id));
+  };
+
   const removePlayer = (id) => {
+    const p = data.players.find((x) => x.id === id);
+    if (!window.confirm(`Удалить игрока ${p ? p.name : ""}? Его партии останутся в истории, но пропадут из статистики.`)) return;
     updateData((prev) => ({
       ...prev,
       players: prev.players.filter((p) => p.id !== id),
@@ -1792,22 +1844,9 @@ export default function BilliardsTracker() {
   };
 
   const deleteMatch = (id) => {
-    if (!window.confirm("Удалить партию из истории? Это действие нельзя отменить.")) return;
+    if (!window.confirm("Удалить партию из истории? Она попадёт в корзину — вернуть её можно внизу вкладки «История».")) return;
     haptic("light");
-    updateData((prev) => {
-      const removed = prev.matches.find((m) => m.id === id);
-      let activeSeries = prev.activeSeries;
-      if (removed && removed.seriesId && activeSeries && activeSeries.id === removed.seriesId) {
-        const wins = { ...activeSeries.wins };
-        wins[removed.winnerId] = Math.max(0, (wins[removed.winnerId] || 0) - 1);
-        activeSeries = { ...activeSeries, wins };
-      }
-      return {
-        ...prev,
-        matches: prev.matches.filter((m) => m.id !== id),
-        activeSeries,
-      };
-    });
+    updateData((prev) => moveMatchToTrash(prev, id));
     setSelectedMatchId((cur) => (cur === id ? null : cur));
   };
 
@@ -1936,6 +1975,37 @@ export default function BilliardsTracker() {
     }
   };
 
+  const openClubHistory = async () => {
+    if (!club) return;
+    setClubHistory(null);
+    setClubHistoryError("");
+    try {
+      const [items, members] = await Promise.all([listClubHistory(club.id), getClubMembers(club.id).catch(() => [])]);
+      setClubHistory(items);
+      setClubMembers(members);
+    } catch (e) {
+      setClubHistoryError(e.message || "Не удалось загрузить историю");
+      setClubHistory([]);
+    }
+  };
+
+  const restoreClubSnapshot = async (h) => {
+    if (!window.confirm(`Вернуть состояние клуба от ${new Date(h.saved_at).toLocaleString("ru-RU")} (${h.matches_count} парт.)? Текущее состояние тоже сохранится в истории.`)) return;
+    setClubHistoryBusy(true);
+    setClubHistoryError("");
+    try {
+      await restoreClubHistory(h.id);
+      const fresh = await fetchClubState(club.id);
+      if (fresh && fresh.data) setData(normalizeData({ ...fresh.data, updatedAt: (fresh.data && fresh.data.updatedAt) || fresh.updatedAt }));
+      setClubHistory(await listClubHistory(club.id));
+      haptic("success");
+    } catch (e) {
+      setClubHistoryError(e.message || "Не удалось восстановить");
+    } finally {
+      setClubHistoryBusy(false);
+    }
+  };
+
   const handleLeaveClub = async () => {
     if (!club) return;
     if (!window.confirm("Покинуть клуб? Локальные данные на этом устройстве останутся, но общий доступ прекратится.")) return;
@@ -1951,11 +2021,20 @@ export default function BilliardsTracker() {
   };
 
   const clearAll = () => {
-    if (!window.confirm("Удалить всех игроков и всю историю партий?")) return;
+    if (
+      !window.confirm(
+        club
+          ? "Удалить всех игроков и всю историю партий? Данные очистятся и у всех участников клуба (прежнее состояние сохранится в истории изменений клуба)."
+          : "Удалить всех игроков и всю историю партий? Копия сохранится на этом устройстве, вернуть её можно в разделе «Резервная копия»."
+      )
+    )
+      return;
+    takeSafetyCopy("clear-all");
     haptic("warning");
     updateData((prev) => ({
       players: [],
       matches: [],
+      trash: [...(prev.trash || []), ...prev.matches.map((m) => ({ ...m, deletedAt: Date.now() }))].slice(-300),
       activeGame: null,
       activeSeries: null,
       activeBracket: null,
@@ -2123,6 +2202,7 @@ export default function BilliardsTracker() {
       try {
         const parsed = JSON.parse(ev.target.result);
         if (!window.confirm("Заменить текущие данные резервной копией?")) return;
+        takeSafetyCopy("import-backup");
         const next = normalizeData(parsed);
         updateData(next);
       } catch (err) {
@@ -3141,6 +3221,7 @@ export default function BilliardsTracker() {
           )}
 
           {tab === "history" && (
+            <>
             <section style={styles.card}>
               <h2 style={styles.h2}>История партий</h2>
               <div style={styles.searchRow} className="no-print">
@@ -3212,6 +3293,10 @@ export default function BilliardsTracker() {
                 </ul>
               )}
             </section>
+            {(data.trash || []).length > 0 && (
+              <TrashCard trash={data.trash} nameById={nameById} onRestore={restoreTrashed} styles={styles} />
+            )}
+            </>
           )}
 
           {tab === "settings" && (
@@ -3366,6 +3451,9 @@ export default function BilliardsTracker() {
                       </div>
                       {clubError && <p style={{ ...styles.hint, color: COLORS.danger }}>{clubError}</p>}
                       <div style={styles.settingBtnRow}>
+                        <button style={styles.brassBtn} onClick={openClubHistory}>
+                          История изменений
+                        </button>
                         <button style={styles.diceBtn} onClick={handleLeaveClub} disabled={clubBusy}>
                           Покинуть клуб
                         </button>
@@ -3395,6 +3483,7 @@ export default function BilliardsTracker() {
                     <input type="file" accept="application/json" onChange={importBackup} style={{ display: "none" }} />
                   </label>
                 </div>
+                <SafetyCopies copies={safetyCopies} onRestore={restoreSafetyCopy} styles={styles} />
               </div>
 
               <div style={styles.card}>
@@ -3714,6 +3803,20 @@ export default function BilliardsTracker() {
             </div>
           </div>
         </div>
+      )}
+
+      {clubHistory !== undefined && club && (
+        <ClubHistoryModal
+          items={clubHistory}
+          members={clubMembers}
+          myId={authSession && authSession.user ? authSession.user.id : null}
+          isCreator={!!(authSession && authSession.user && club.created_by === authSession.user.id)}
+          busy={clubHistoryBusy}
+          error={clubHistoryError}
+          onRestore={restoreClubSnapshot}
+          onClose={() => setClubHistory(undefined)}
+          styles={styles}
+        />
       )}
 
       {profile && (

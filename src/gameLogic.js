@@ -8,6 +8,7 @@ export function loadInitial() {
   return {
     players: [],
     matches: [],
+    trash: [],
     activeGame: null,
     activeSeries: null,
     activeBracket: null,
@@ -68,6 +69,50 @@ export function sanitizeMatches(list) {
     }));
 }
 
+const TRASH_LIMIT = 300;
+
+// Deleted matches wait here (and can be restored) instead of vanishing.
+export function sanitizeTrash(list) {
+  return sanitizeMatches(list)
+    .map((m) => ({ ...m, deletedAt: typeof m.deletedAt === "number" && Number.isFinite(m.deletedAt) ? m.deletedAt : 0 }))
+    .slice(-TRASH_LIMIT);
+}
+
+// Move a match to the trash. If it belonged to the running best-of series,
+// its win is taken back from the series (and given back on restore).
+export function moveMatchToTrash(data, matchId, now = Date.now()) {
+  const removed = data.matches.find((m) => m.id === matchId);
+  if (!removed) return data;
+  let activeSeries = data.activeSeries;
+  if (removed.seriesId && activeSeries && activeSeries.id === removed.seriesId) {
+    const wins = { ...activeSeries.wins };
+    wins[removed.winnerId] = Math.max(0, (wins[removed.winnerId] || 0) - 1);
+    activeSeries = { ...activeSeries, wins };
+  }
+  return {
+    ...data,
+    matches: data.matches.filter((m) => m.id !== matchId),
+    trash: [...(data.trash || []), { ...removed, deletedAt: now }].slice(-TRASH_LIMIT),
+    activeSeries,
+  };
+}
+
+export function restoreMatchFromTrash(data, matchId) {
+  const item = (data.trash || []).find((m) => m.id === matchId);
+  if (!item) return data;
+  const { deletedAt, ...match } = item;
+  let activeSeries = data.activeSeries;
+  if (match.seriesId && activeSeries && activeSeries.id === match.seriesId && match.winnerId) {
+    activeSeries = { ...activeSeries, wins: { ...activeSeries.wins, [match.winnerId]: (activeSeries.wins[match.winnerId] || 0) + 1 } };
+  }
+  return {
+    ...data,
+    matches: [...data.matches, match],
+    trash: data.trash.filter((m) => m.id !== matchId),
+    activeSeries,
+  };
+}
+
 function sanitizeActiveGame(g) {
   if (!isObj(g) || !Array.isArray(g.participants) || !g.participants.length || !g.participants.every((x) => typeof x === "string")) {
     return null;
@@ -85,6 +130,7 @@ export function normalizeData(input) {
   return {
     players: sanitizePlayers(parsed.players),
     matches: sanitizeMatches(parsed.matches),
+    trash: sanitizeTrash(parsed.trash),
     activeGame: sanitizeActiveGame(parsed.activeGame),
     activeSeries: isObj(parsed.activeSeries) ? parsed.activeSeries : null,
     activeBracket: isObj(parsed.activeBracket) ? parsed.activeBracket : null,
