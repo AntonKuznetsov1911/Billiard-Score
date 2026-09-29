@@ -1774,6 +1774,7 @@ export default function BilliardsTracker() {
   };
 
   const deleteMatch = (id) => {
+    if (!window.confirm("Удалить партию из истории? Это действие нельзя отменить.")) return;
     haptic("light");
     updateData((prev) => {
       const removed = prev.matches.find((m) => m.id === id);
