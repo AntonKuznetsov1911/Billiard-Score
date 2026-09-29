@@ -2123,18 +2123,7 @@ export default function BilliardsTracker() {
       try {
         const parsed = JSON.parse(ev.target.result);
         if (!window.confirm("Заменить текущие данные резервной копией?")) return;
-        const next = {
-          players: (Array.isArray(parsed.players) ? parsed.players : []).map((p, i) => ({
-            ...p,
-            color: p.color || AVATAR_COLORS[i % AVATAR_COLORS.length],
-          })),
-          matches: Array.isArray(parsed.matches) ? parsed.matches : [],
-          activeGame: parsed.activeGame || null,
-          activeSeries: parsed.activeSeries || null,
-          theme: parsed.theme === "dark" ? "dark" : "light",
-          gameType: parsed.gameType === "pool" ? "pool" : "russian",
-          russianMode: RUSSIAN_MODES[parsed.russianMode] ? parsed.russianMode : "free",
-        };
+        const next = normalizeData(parsed);
         updateData(next);
       } catch (err) {
         window.alert("Не удалось прочитать файл резервной копии");
