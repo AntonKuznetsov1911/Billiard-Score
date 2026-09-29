@@ -18,20 +18,80 @@ export function loadInitial() {
   };
 }
 
-export function normalizeData(parsed) {
-  return {
-    players: (Array.isArray(parsed.players) ? parsed.players : []).map((p, i) => ({
+const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const cleanStr = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
+const cleanNum = (v, max = 100000) => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(max, v)) : 0);
+const cleanScores = (v) => {
+  const out = {};
+  if (isObj(v)) Object.keys(v).slice(0, 20).forEach((k) => (out[k] = cleanNum(v[k], 999)));
+  return out;
+};
+
+// Data can come from a shared club (written by any member), a backup file or
+// storage, so it is treated as untrusted: structurally broken records are
+// dropped and known fields are clamped rather than trusted, so one malformed
+// entry can't crash every member's app.
+export function sanitizePlayers(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter((p) => isObj(p) && typeof p.id === "string" && p.id && typeof p.name === "string")
+    .slice(0, 200)
+    .map((p, i) => ({
       ...p,
-      color: p.color || AVATAR_COLORS[i % AVATAR_COLORS.length],
-    })),
-    matches: Array.isArray(parsed.matches) ? parsed.matches : [],
-    activeGame: parsed.activeGame || null,
-    activeSeries: parsed.activeSeries || null,
-    activeBracket: parsed.activeBracket || null,
+      id: p.id.slice(0, 64),
+      name: p.name.slice(0, 40),
+      color: typeof p.color === "string" && COLOR_RE.test(p.color) ? p.color : AVATAR_COLORS[i % AVATAR_COLORS.length],
+    }));
+}
+
+export function sanitizeMatches(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter(
+      (m) =>
+        isObj(m) &&
+        Array.isArray(m.participants) &&
+        m.participants.length > 0 &&
+        m.participants.every((x) => typeof x === "string") &&
+        !Number.isNaN(new Date(m.date).getTime())
+    )
+    .slice(0, 20000)
+    .map((m) => ({
+      ...m,
+      id: typeof m.id === "string" ? m.id.slice(0, 64) : uid(),
+      participants: m.participants.slice(0, 20),
+      winnerId: typeof m.winnerId === "string" ? m.winnerId : null,
+      scores: cleanScores(m.scores),
+      durationMs: cleanNum(m.durationMs, 7 * 86400000),
+      solo: !!m.solo,
+      breakerId: typeof m.breakerId === "string" ? m.breakerId : null,
+      breakerPotted: m.breakerPotted === true || m.breakerPotted === false ? m.breakerPotted : null,
+    }));
+}
+
+function sanitizeActiveGame(g) {
+  if (!isObj(g) || !Array.isArray(g.participants) || !g.participants.length || !g.participants.every((x) => typeof x === "string")) {
+    return null;
+  }
+  return {
+    ...g,
+    participants: g.participants.slice(0, 20),
+    scores: cleanScores(g.scores),
+    actionLog: Array.isArray(g.actionLog) ? g.actionLog.filter((a) => isObj(a) && typeof a.pid === "string").slice(-5) : [],
+  };
+}
+
+export function normalizeData(input) {
+  const parsed = isObj(input) ? input : {};
+  return {
+    players: sanitizePlayers(parsed.players),
+    matches: sanitizeMatches(parsed.matches),
+    activeGame: sanitizeActiveGame(parsed.activeGame),
+    activeSeries: isObj(parsed.activeSeries) ? parsed.activeSeries : null,
+    activeBracket: isObj(parsed.activeBracket) ? parsed.activeBracket : null,
     theme: parsed.theme === "dark" ? "dark" : "light",
     gameType: parsed.gameType === "pool" ? "pool" : "russian",
     russianMode: RUSSIAN_MODES[parsed.russianMode] ? parsed.russianMode : "free",
-    updatedAt: parsed.updatedAt || 0,
+    updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
   };
 }
 

@@ -456,3 +456,42 @@ describe("buildMatchTempo and buildPeriodSummary", () => {
     expect(s.blowMargin).toBe(6);
   });
 });
+
+describe("normalizeData treats input as untrusted", () => {
+  it("survives garbage without throwing", () => {
+    [null, undefined, 5, "x", [], { players: "no", matches: 7, activeGame: "boom" }].forEach((bad) => {
+      const out = normalizeData(bad);
+      expect(out.players).toEqual([]);
+      expect(out.matches).toEqual([]);
+      expect(out.activeGame).toBeNull();
+    });
+  });
+  it("drops structurally broken players and matches, keeps good ones", () => {
+    const out = normalizeData({
+      players: [{ id: "a", name: "Ok" }, { name: "no id" }, null, { id: 5, name: "bad id" }],
+      matches: [
+        { id: "m1", participants: ["a"], date: "2024-01-01", scores: { a: 3 }, winnerId: "a" },
+        { id: "m2", participants: "nope", date: "2024-01-01" },
+        { id: "m3", participants: ["a"], date: "not a date" },
+      ],
+    });
+    expect(out.players.map((p) => p.id)).toEqual(["a"]);
+    expect(out.matches.map((m) => m.id)).toEqual(["m1"]);
+  });
+  it("clamps names, colors, scores and durations", () => {
+    const out = normalizeData({
+      players: [{ id: "a", name: "x".repeat(500), color: "red; background:url(//evil)" }],
+      matches: [{ participants: ["a"], date: "2024-01-01", scores: { a: 1e12, b: "9" }, durationMs: -5 }],
+    });
+    expect(out.players[0].name).toHaveLength(40);
+    expect(out.players[0].color).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(out.matches[0].scores).toEqual({ a: 999, b: 0 });
+    expect(out.matches[0].durationMs).toBe(0);
+    expect(typeof out.matches[0].id).toBe("string");
+  });
+  it("rejects an activeGame without a participants array", () => {
+    expect(normalizeData({ activeGame: { participants: "a", scores: {} } }).activeGame).toBeNull();
+    const g = normalizeData({ activeGame: { participants: ["a"], scores: { a: 2 }, actionLog: [1, { pid: "a", prev: 1 }] } }).activeGame;
+    expect(g.actionLog).toEqual([{ pid: "a", prev: 1 }]);
+  });
+});

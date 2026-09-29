@@ -2,9 +2,13 @@ import { supabase } from "./supabaseClient.js";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I — easy to read aloud
 
-function randomCode(len = 6) {
+// Invite codes are the only thing protecting a club, so they must come from a
+// cryptographic RNG (alphabet is 32 symbols, so masking 5 bits is unbiased).
+function randomCode(len = 8) {
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
   let s = "";
-  for (let i = 0; i < len; i++) s += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  for (let i = 0; i < len; i++) s += CODE_ALPHABET[bytes[i] & 31];
   return s;
 }
 
@@ -87,11 +91,23 @@ export async function createClub(name, displayName) {
 export async function joinClub(code, displayName) {
   const client = requireClient();
   const user = await currentUser();
-  const { data: club, error } = await client
-    .from("clubs")
-    .select("*")
-    .eq("code", code.trim().toUpperCase())
-    .maybeSingle();
+  const clean = code.trim().toUpperCase();
+
+  // Preferred path: the join_club_by_code function (see supabase/hardening.sql),
+  // which is the only way into someone else's club once the database is hardened.
+  const { data: joined, error: rpcError } = await client.rpc("join_club_by_code", {
+    p_code: clean,
+    p_display_name: displayName || null,
+  });
+  if (!rpcError) return joined;
+  if (rpcError.code === "P0002" || /club_not_found/.test(rpcError.message || "")) {
+    throw new Error("Клуб с таким кодом не найден");
+  }
+  // Database not hardened yet (function missing): fall back to the legacy lookup.
+  const missing = rpcError.code === "PGRST202" || rpcError.code === "42883" || /Could not find the function/i.test(rpcError.message || "");
+  if (!missing) throw rpcError;
+
+  const { data: club, error } = await client.from("clubs").select("*").eq("code", clean).maybeSingle();
   if (error) throw error;
   if (!club) throw new Error("Клуб с таким кодом не найден");
   const { error: joinError } = await client
