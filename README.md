@@ -61,7 +61,7 @@ npm run build
 По умолчанию выключен. Чтобы несколько игроков видели одни и те же партии и статистику в реальном времени:
 
 1. Создайте бесплатный проект на [supabase.com](https://supabase.com).
-2. Выполните `supabase/schema.sql` целиком в Supabase → SQL Editor.
+2. Выполните `supabase/schema.sql` целиком в Supabase → SQL Editor. Если база уже была создана раньше — выполните вместо этого `supabase/hardening.sql` (права доступа) и `supabase/history.sql` (история изменений клуба; создатель клуба может вернуть любое прежнее состояние).
 3. Скопируйте `.env.example` в `.env` и заполните `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY` (Settings → API → `anon public`, **не** `service_role`) — для локальной разработки. Для GitHub Pages добавьте те же два значения как секреты репозитория (`Settings → Secrets and variables → Actions`) с именами `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY` — workflow деплоя уже их подхватывает.
 4. Без этих значений раздел «Общий доступ» в приложении просто не отображается — остальной функционал не затронут.
 
