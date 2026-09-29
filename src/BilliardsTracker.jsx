@@ -872,6 +872,7 @@ function makeStyles(dark) {
       cursor: "pointer",
       userSelect: "none",
       touchAction: "manipulation",
+      WebkitTapHighlightColor: "transparent",
       minHeight: 0,
     },
     fsZoneCenter: {
@@ -894,6 +895,7 @@ function makeStyles(dark) {
       textShadow: "0 2px 6px rgba(0,0,0,0.35)",
       textAlign: "center",
     },
+    fsZoneScoreWrap: { display: "inline-block", willChange: "transform" },
     fsZoneScore: {
       fontFamily: "'Space Mono', monospace",
       fontSize: "min(26vw, 108px)",
@@ -903,18 +905,21 @@ function makeStyles(dark) {
       border: "none",
       lineHeight: 1,
       padding: 0,
-      textShadow: "0 4px 18px rgba(0,0,0,0.4)",
+      textShadow: "0 3px 8px rgba(0,0,0,0.45)",
     },
     fsZoneMinusBar: {
       width: "100%",
-      padding: "14px 0",
+      minHeight: "68px",
+      padding: "20px 0",
       border: "none",
-      borderTop: "1px solid rgba(255,255,255,0.16)",
-      background: "rgba(0,0,0,0.24)",
-      color: "#F3EBDA",
-      fontSize: "14px",
-      fontWeight: 700,
+      borderTop: "2px solid rgba(224,120,104,0.7)",
+      background: "rgba(150,45,35,0.42)",
+      color: "#FFE3DC",
+      fontSize: "18px",
+      fontWeight: 800,
+      letterSpacing: "0.3px",
       touchAction: "manipulation",
+      WebkitTapHighlightColor: "transparent",
     },
     fsZoneEdit: {
       position: "absolute",
@@ -1200,24 +1205,57 @@ export default function BilliardsTracker() {
     };
   }, [selectedMatchId]);
 
+  // Writes are coalesced: rapid taps (big mode) would otherwise serialize the
+  // whole state, hit storage and fire cloud/club network calls on every tap.
+  // The latest state is flushed shortly after the last change, and right away
+  // when the page is hidden or closed.
+  const pendingPersistRef = useRef(null);
+  const persistTimerRef = useRef(null);
+
+  const flushPersist = useCallback(async () => {
+    const next = pendingPersistRef.current;
+    if (!next) return;
+    pendingPersistRef.current = null;
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+    }
+    try {
+      await window.storage.set(STORAGE_KEY, JSON.stringify(next), false);
+    } catch (e) {
+      console.error("Storage error", e);
+    }
+    // Best-effort mirror to Telegram CloudStorage; silently no-ops outside Telegram.
+    saveToCloud(next).catch(() => {});
+    // Best-effort mirror to the shared club, if any; the realtime subscription applies
+    // remote changes via a separate setData call that never goes through persist(), so
+    // there's no echo loop to guard against here.
+    if (club) {
+      pushClubState(club.id, next).catch(() => setClubError("Не удалось синхронизировать с клубом"));
+    }
+  }, [club]);
+
   const persist = useCallback(
-    async (next) => {
-      try {
-        await window.storage.set(STORAGE_KEY, JSON.stringify(next), false);
-      } catch (e) {
-        console.error("Storage error", e);
-      }
-      // Best-effort mirror to Telegram CloudStorage; silently no-ops outside Telegram.
-      saveToCloud(next).catch(() => {});
-      // Best-effort mirror to the shared club, if any; the realtime subscription applies
-      // remote changes via a separate setData call that never goes through persist(), so
-      // there's no echo loop to guard against here.
-      if (club) {
-        pushClubState(club.id, next).catch(() => setClubError("Не удалось синхронизировать с клубом"));
-      }
+    (next) => {
+      pendingPersistRef.current = next;
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = setTimeout(flushPersist, 300);
     },
-    [club]
+    [flushPersist]
   );
+
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flushPersist();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", flushPersist);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", flushPersist);
+      flushPersist();
+    };
+  }, [flushPersist]);
 
   const updateData = useCallback(
     (updater) => {
@@ -1432,16 +1470,20 @@ export default function BilliardsTracker() {
     updateData((prev) => ({ ...prev, activeBracket: null }));
   };
 
-  const addPoint = (playerId, delta) => {
+  const addPoint = (playerId, delta, { fast = false } = {}) => {
     // Guards against the same tap firing twice on mobile (touch + synthetic
     // click both landing) without blocking genuinely separate fast taps —
     // real double-fires land within the same event loop turn, well under 70ms.
-    const tapKey = `${playerId}:${delta}`;
-    const now = Date.now();
-    if (lastTapRef.current.key === tapKey && now - lastTapRef.current.ts < 70) return;
-    lastTapRef.current = { key: tapKey, ts: now };
+    // The big-mode zones react to pointerdown (one event per tap, no click
+    // to duplicate it), so they skip the guard entirely via `fast`.
+    if (!fast) {
+      const tapKey = `${playerId}:${delta}`;
+      const now = Date.now();
+      if (lastTapRef.current.key === tapKey && now - lastTapRef.current.ts < 70) return;
+      lastTapRef.current = { key: tapKey, ts: now };
+    }
     haptic("light");
-    setScorePulse({ pid: playerId, ts: Date.now() });
+    if (!fast) setScorePulse({ pid: playerId, ts: Date.now() });
     updateData((prev) => {
       if (!prev.activeGame) return prev;
       const before = prev.activeGame.scores[playerId] || 0;
@@ -1450,6 +1492,13 @@ export default function BilliardsTracker() {
       const actionLog = [...(prev.activeGame.actionLog || []), { pid: playerId, prev: before }].slice(-5);
       return { ...prev, activeGame: { ...prev.activeGame, scores, actionLog } };
     });
+  };
+
+  // Pulses a big-mode score without touching React state or remounting the
+  // number: a transform-only Web Animation on an already-promoted layer.
+  const pulseScore = (zoneEl) => {
+    const el = zoneEl && zoneEl.querySelector("[data-score-pulse]");
+    if (el && el.animate) el.animate([{ transform: "scale(1)" }, { transform: "scale(1.18)" }, { transform: "scale(1)" }], { duration: 200, easing: "ease-out" });
   };
 
   const setScore = (playerId, value) => {
@@ -2594,10 +2643,18 @@ export default function BilliardsTracker() {
                               ...styles.fsZone,
                               background: `radial-gradient(120% 90% at 50% 0%, ${playerColor(pid)}b3 0%, ${playerColor(pid)}3d 38%, rgba(10,26,20,0.98) 82%)`,
                             }}
-                            onClick={() => addPoint(pid, isPoints ? ballValue : 1)}
+                            onPointerDown={(e) => {
+                              pulseScore(e.currentTarget);
+                              addPoint(pid, isPoints ? ballValue : 1, { fast: true });
+                            }}
+                            onClick={(e) => {
+                              // keyboard activation only (detail 0); real taps are handled on pointerdown
+                              if (e.detail === 0) addPoint(pid, isPoints ? ballValue : 1, { fast: true });
+                            }}
                           >
                             <button
                               style={styles.fsZoneEdit}
+                              onPointerDown={(e) => e.stopPropagation()}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setScoreWheelPid(pid);
@@ -2613,10 +2670,7 @@ export default function BilliardsTracker() {
                                   <span style={{ opacity: 0.6, fontSize: "12px", fontWeight: 500 }}> · до {targetOf(pid)}</span>
                                 ) : null}
                               </div>
-                              <span
-                                key={scorePulse.pid === pid ? scorePulse.ts : "s"}
-                                style={{ display: "inline-block", animation: scorePulse.pid === pid ? "scorePop 0.32s ease" : "none" }}
-                              >
+                              <span data-score-pulse style={styles.fsZoneScoreWrap}>
                                 <div style={styles.fsZoneScore} aria-label={`Счёт: ${nameById(pid)}`}>
                                   {activeGame.scores[pid] || 0}
                                 </div>
@@ -2624,9 +2678,13 @@ export default function BilliardsTracker() {
                             </div>
                             <button
                               style={{ ...styles.fsZoneMinusBar, opacity: (activeGame.scores[pid] || 0) <= 0 ? 0.4 : 1 }}
+                              onPointerDown={(e) => {
+                                e.stopPropagation();
+                                if ((activeGame.scores[pid] || 0) > 0) addPoint(pid, -1, { fast: true });
+                              }}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                addPoint(pid, -1);
+                                if (e.detail === 0) addPoint(pid, -1, { fast: true });
                               }}
                               disabled={(activeGame.scores[pid] || 0) <= 0}
                               aria-label={`Убрать шар (ошибка/штраф): ${nameById(pid)}`}
