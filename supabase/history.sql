@@ -104,3 +104,19 @@ $$;
 
 revoke all on function public.restore_club_state(bigint) from public, anon;
 grant execute on function public.restore_club_state(bigint) to authenticated;
+
+-- Своё имя в клубе (для журнала изменений). Меняет только display_name своей
+-- строки: UPDATE-политики на club_members нет, поэтому через функцию.
+create or replace function public.set_my_club_name(p_club_id uuid, p_name text)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update club_members
+     set display_name = nullif(left(trim(p_name), 40), '')
+   where club_id = p_club_id and user_id = auth.uid();
+$$;
+
+revoke all on function public.set_my_club_name(uuid, text) from public, anon;
+grant execute on function public.set_my_club_name(uuid, text) to authenticated;
