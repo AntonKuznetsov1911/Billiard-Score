@@ -547,6 +547,61 @@ const DARK_SPOT_MASK = [
   "radial-gradient(ellipse 20% 12% at 50% 40%, rgba(0,0,0,0.22) 30%, transparent 100%)",
 ].join(", ");
 
+const SYNC_LOOK = {
+  synced: { color: "#5BC98A", label: "Синхронизировано", short: "✓" },
+  pending: { color: "#E8B75A", label: "Отправляем…", short: "…" },
+  offline: { color: "#A8A294", label: "Нет сети — сохранено на телефоне", short: "офлайн" },
+  error: { color: "#E0705F", label: "Не дошло — повторим", short: "!" },
+};
+
+// Small club-sync indicator: does everyone else already see my changes?
+function SyncBadge({ status, compact, dotOnly }) {
+  const look = SYNC_LOOK[status] || SYNC_LOOK.synced;
+  const dot = (
+    <span
+      style={{
+        width: "8px",
+        height: "8px",
+        flexShrink: 0,
+        borderRadius: "50%",
+        background: look.color,
+        boxShadow: `0 0 6px ${look.color}`,
+        animation: status === "pending" ? "syncPulse 1s ease-in-out infinite" : "none",
+      }}
+    />
+  );
+  if (dotOnly) {
+    return (
+      <span role="status" aria-label={`Клуб: ${look.label}`} title={`Клуб: ${look.label}`} style={{ display: "inline-flex", padding: "0 4px" }}>
+        {dot}
+      </span>
+    );
+  }
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      title={`Клуб: ${look.label}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
+        padding: compact ? "4px 8px" : "4px 10px",
+        borderRadius: "999px",
+        background: "rgba(0,0,0,0.35)",
+        border: "1px solid rgba(255,255,255,0.18)",
+        color: "#F1E9D2",
+        fontSize: "11px",
+        fontWeight: 600,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {dot}
+      {compact ? `Клуб ${look.short}` : `Клуб · ${look.label}`}
+    </span>
+  );
+}
+
 function TableArt({ gameType, lit, dark }) {
   const isPool = gameType === "pool";
   // Light theme: the photo a touch brighter and livelier; dark theme: only
@@ -1070,6 +1125,9 @@ export default function BilliardsTracker() {
   const [historyNameFilter, setHistoryNameFilter] = useState("");
   const [celebrate, setCelebrate] = useState(false);
   const [isOffline, setIsOffline] = useState(typeof navigator !== "undefined" && !navigator.onLine);
+  // Club sync state for the header badge: "pending" (changes not yet on the
+  // server), "synced", or "error" (will retry).
+  const [clubSync, setClubSync] = useState("synced");
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [tableLit, setTableLit] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -1290,6 +1348,7 @@ export default function BilliardsTracker() {
             // storage unavailable
           }
           setData((prev) => (synced === club.id ? mergeData(prev, remoteData) : remoteData));
+          setClubSync("synced");
           try {
             window.localStorage.setItem(CLUB_SYNCED_KEY, club.id);
           } catch (e) {
@@ -1356,6 +1415,64 @@ export default function BilliardsTracker() {
   const pendingPersistRef = useRef(null);
   const persistTimerRef = useRef(null);
 
+  // Latest state, for retrying a failed club push with current data.
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const clubInFlightRef = useRef(0);
+  const clubRetryRef = useRef(null);
+
+  const pushToClub = useCallback(
+    (next) => {
+      if (!club) return;
+      if (clubRetryRef.current) {
+        clearTimeout(clubRetryRef.current);
+        clubRetryRef.current = null;
+      }
+      clubInFlightRef.current += 1;
+      setClubSync("pending");
+      pushClubState(club.id, next, mergeWithRemote)
+        .then((merged) => {
+          setData((prev) => mergeData(prev, merged));
+          clubInFlightRef.current -= 1;
+          if (clubInFlightRef.current === 0 && !pendingPersistRef.current) {
+            setClubSync("synced");
+            setClubError("");
+          }
+        })
+        .catch(() => {
+          clubInFlightRef.current -= 1;
+          setClubSync("error");
+          setClubError("Не удалось синхронизировать с клубом — повторим автоматически");
+          // Retry with whatever the state is by then; nothing is lost meanwhile,
+          // it's all kept on the device.
+          if (!clubRetryRef.current) {
+            clubRetryRef.current = setTimeout(() => {
+              clubRetryRef.current = null;
+              pushToClub(dataRef.current);
+            }, 8000);
+          }
+        });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [club]
+  );
+
+  useEffect(() => {
+    if (!club) return;
+    const retry = () => {
+      if (clubSync !== "synced") pushToClub(dataRef.current);
+    };
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [club, clubSync, pushToClub]);
+
+  useEffect(
+    () => () => {
+      if (clubRetryRef.current) clearTimeout(clubRetryRef.current);
+    },
+    []
+  );
+
   const flushPersist = useCallback(async () => {
     const next = pendingPersistRef.current;
     if (!next) return;
@@ -1374,20 +1491,18 @@ export default function BilliardsTracker() {
     // Best-effort mirror to the shared club, if any; the realtime subscription applies
     // remote changes via a separate setData call that never goes through persist(), so
     // there's no echo loop to guard against here.
-    if (club) {
-      pushClubState(club.id, next, mergeWithRemote)
-        .then((merged) => setData((prev) => mergeData(prev, merged)))
-        .catch(() => setClubError("Не удалось синхронизировать с клубом"));
-    }
-  }, [club]);
+    if (club) pushToClub(next);
+  }, [club, pushToClub]);
 
   const persist = useCallback(
     (next) => {
       pendingPersistRef.current = next;
+      // (deferred: persist runs inside a setData updater)
+      if (club) Promise.resolve().then(() => setClubSync("pending"));
       if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
       persistTimerRef.current = setTimeout(flushPersist, 300);
     },
-    [flushPersist]
+    [flushPersist, club]
   );
 
   useEffect(() => {
@@ -2417,6 +2532,10 @@ export default function BilliardsTracker() {
         input[type=number]::-webkit-outer-spin-button,
         input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         html, body { overscroll-behavior-y: none; }
+        @keyframes syncPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.35; }
+        }
         @keyframes diceShake {
           0% { transform: rotate(0deg) scale(1); }
           25% { transform: rotate(-18deg) scale(1.12); }
@@ -2525,7 +2644,12 @@ export default function BilliardsTracker() {
         ) : !menuVisible ? null : (
           <div className="menu-reveal">
         {!immersive && (
-          <header style={styles.header} className="no-print">
+          <header style={{ ...styles.header, position: "relative" }} className="no-print">
+            {club && (
+              <div style={{ position: "absolute", right: "12px", top: "calc(6px + env(safe-area-inset-top))" }}>
+                <SyncBadge status={isOffline ? "offline" : clubSync} compact />
+              </div>
+            )}
             <div style={styles.gameTypeSwitch} role="tablist" aria-label="Дисциплина">
               <button
                 type="button"
@@ -2882,6 +3006,7 @@ export default function BilliardsTracker() {
                         <button style={styles.fsTopBtn} onClick={() => setGameMode(false)}>
                           ▣ Обычный вид
                         </button>
+                        {club && <SyncBadge status={isOffline ? "offline" : clubSync} dotOnly />}
                         <button
                           style={{ ...styles.fsTopBtn, opacity: canUndoGame(activeGame) ? 1 : 0.4 }}
                           disabled={!canUndoGame(activeGame)}
