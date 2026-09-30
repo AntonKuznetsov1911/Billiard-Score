@@ -52,6 +52,7 @@ import {
   moveMatchToTrash,
   restoreMatchFromTrash,
 } from "./gameLogic.js";
+import { buildCsv } from "./csv.js";
 import { listSafetyCopies, saveSafetyCopy, maybeAutoSafetyCopy } from "./safety.js";
 import { TrashCard, SafetyCopies, ClubHistoryModal } from "./HistoryUI.jsx";
 import Onboarding from "./Onboarding.jsx";
@@ -2285,8 +2286,7 @@ export default function BilliardsTracker() {
     [data.matches, selectedMatchId]
   );
 
-  const exportExcel = async () => {
-    const XLSX = await import("xlsx");
+  const exportCsv = () => {
     const rows = sortedHistory.map((m) => ({
       Дата: new Date(m.date).toLocaleDateString("ru-RU"),
       Время: new Date(m.date).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
@@ -2310,10 +2310,19 @@ export default function BilliardsTracker() {
       Разбоев: s.breaksCount,
       "% разбоя": s.breaksCount ? s.breakPct : "",
     }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "История");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(statRows), "Статистика");
-    XLSX.writeFile(wb, `billiards-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    const csv = buildCsv([
+      { title: "Статистика", rows: statRows },
+      { title: "История партий", rows },
+    ]);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `billiards-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const exportBackup = () => {
@@ -3504,10 +3513,10 @@ export default function BilliardsTracker() {
 
               <div style={styles.card}>
                 <h2 style={styles.h2}>Экспорт</h2>
-                <p style={styles.hint}>Скачайте историю и статистику в Excel, или откройте печать, чтобы сохранить как PDF.</p>
+                <p style={styles.hint}>Скачайте историю и статистику таблицей (CSV — открывается в Excel и Google Таблицах), или откройте печать, чтобы сохранить как PDF.</p>
                 <div style={styles.settingBtnRow}>
-                  <button style={styles.brassBtn} onClick={exportExcel}>
-                    📊 Excel
+                  <button style={styles.brassBtn} onClick={exportCsv}>
+                    📊 Таблица (CSV)
                   </button>
                   <button style={styles.diceBtn} onClick={() => window.print()}>
                     🖨️ PDF (печать)
