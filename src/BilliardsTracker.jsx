@@ -528,14 +528,18 @@ const gateStyles = {
   },
 };
 
-function TableArt({ gameType, lit }) {
+function TableArt({ gameType, lit, dark }) {
   const isPool = gameType === "pool";
+  // Light theme: the photo a touch brighter and livelier; dark theme: dimmed,
+  // desaturated "evening" look. Transitions so switching themes is smooth.
+  const photoFilter = dark ? "brightness(0.66) saturate(0.78)" : "brightness(1.12) saturate(1.12)";
   const layerStyle = {
     position: "absolute",
     inset: 0,
     backgroundSize: "cover",
     backgroundPosition: "center 42%",
-    transition: "opacity 0.6s ease",
+    transition: "opacity 0.6s ease, filter 0.5s ease",
+    filter: photoFilter,
     animation: "tableKenBurns 22s ease-in-out infinite alternate",
   };
 
@@ -612,6 +616,7 @@ function makeStyles(dark) {
       position: "absolute",
       inset: 0,
       background: "transparent",
+      transition: "background 0.5s ease",
     },
     page: {
       position: "relative",
@@ -703,8 +708,8 @@ function makeStyles(dark) {
       transition: "transform 0.12s ease, background 0.15s ease, color 0.15s ease",
     },
     bottomNavBtnActive: {
-      color: dark ? "#F8E7B8" : COLORS.wood,
-      background: dark ? "rgba(192,138,62,0.20)" : "rgba(192,138,62,0.20)",
+      color: dark ? "#E9CF98" : "#FFE2A3",
+      background: dark ? "rgba(192,138,62,0.16)" : "rgba(217,163,84,0.30)",
     },
     navIcon: { fontSize: "19px", lineHeight: 1 },
     main: { padding: "0 16px", maxWidth: "560px", margin: "0 auto" },
@@ -731,7 +736,7 @@ function makeStyles(dark) {
       padding: "18px",
       marginBottom: "16px",
     },
-    h2: { fontFamily: "'Fraunces', serif", fontSize: "17px", fontWeight: 600, margin: "0 0 12px", color: dark ? "#E7CE93" : COLORS.wood, borderLeft: `3px solid ${COLORS.brass}`, paddingLeft: "10px" },
+    h2: { fontFamily: "'Fraunces', serif", fontSize: "17px", fontWeight: 600, margin: "0 0 12px", color: dark ? "#D6B97F" : "#F6D48A", borderLeft: `3px solid ${COLORS.brass}`, paddingLeft: "10px" },
     addRow: { display: "flex", gap: "8px" },
     input: { flex: 1, padding: "10px 12px", borderRadius: "8px", border: `1px solid ${T.inputBorder}`, fontSize: "14px", background: T.inputBg, color: T.solidText },
     brassBtn: { padding: "10px 16px", borderRadius: "8px", border: "none", background: COLORS.brass, color: "#2C1D08", fontWeight: 700, fontSize: "13px" },
@@ -784,7 +789,7 @@ function makeStyles(dark) {
     ghostBtn: { padding: "7px 10px", borderRadius: "8px", border: "1px solid transparent", background: "transparent", color: T.sub, fontWeight: 600, fontSize: "12px" },
     diceRow: { display: "flex", flexWrap: "wrap", gap: "14px", marginTop: "14px" },
     diceCard: { display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" },
-    diceFace: { fontSize: "32px", lineHeight: 1, color: dark ? "#E7CE93" : COLORS.wood },
+    diceFace: { fontSize: "32px", lineHeight: 1, color: dark ? "#D6B97F" : "#F6D48A" },
     diceName: { fontSize: "11px", color: T.sub, fontWeight: 500 },
     tieNote: { marginTop: "10px" },
     breakerBanner: {
@@ -2414,8 +2419,15 @@ export default function BilliardsTracker() {
       `}</style>
 
       <div style={styles.outerBg}>
-        <TableArt gameType={data.gameType} lit={tableLit} />
-        <div style={{ ...styles.outerOverlay, ...(activeGame ? { background: "rgba(4,10,7,0.45)" } : {}) }} />
+        <TableArt gameType={data.gameType} lit={tableLit} dark={dark} />
+        <div
+          style={{
+            ...styles.outerOverlay,
+            background: activeGame
+              ? dark ? "rgba(2,6,4,0.58)" : "rgba(4,10,7,0.34)"
+              : dark ? "rgba(2,6,4,0.32)" : "transparent",
+          }}
+        />
       </div>
 
       <div style={styles.page}>
