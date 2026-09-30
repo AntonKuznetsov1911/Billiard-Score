@@ -596,6 +596,10 @@ function makeStyles(dark) {
         tableBorder: "rgba(255,255,255,0.18)",
         rowBorder: "rgba(255,255,255,0.08)",
         modalBg: "#1C1D18",
+        pickText: COLORS.chalk,
+        pickBorder: COLORS.chalk,
+        pickActiveBg: COLORS.chalk,
+        pickActiveText: "#fff",
       }
     : {
         cardBg: "rgba(255,251,242,0)",
@@ -618,6 +622,12 @@ function makeStyles(dark) {
         tableBorder: COLORS.wood,
         rowBorder: "#EEE3C8",
         modalBg: "#FFFDF8",
+        // Selectable chips/outline buttons sit right on the dark photo too,
+        // so the blue "chalk" accent disappears there — use warm gold.
+        pickText: "#F6D48A",
+        pickBorder: "rgba(246,212,138,0.8)",
+        pickActiveBg: "#E0B35E",
+        pickActiveText: "#2A1D0A",
       };
 
   return {
@@ -769,30 +779,41 @@ function makeStyles(dark) {
     },
     chipRemove: { border: "none", background: "transparent", color: T.sub, fontSize: "16px", lineHeight: 1, width: "20px", height: "20px", borderRadius: "50%" },
     hint: { fontSize: "12.5px", color: T.sub, margin: "4px 0 0" },
+    pickLabel: { fontSize: "14px", fontWeight: 600, color: T.text, margin: "4px 0 0" },
     // Same as hint, but for text inside modals (solid/opaque surfaces —
     // see T.solidSub for why it needs a different color there).
     modalHint: { fontSize: "12.5px", color: T.solidSub, margin: "4px 0 0" },
     selectChip: {
       padding: "8px 14px",
       borderRadius: "999px",
-      border: `1.5px solid ${COLORS.chalk}`,
+      border: `1.5px solid ${T.pickBorder}`,
       background: T.cardBg,
       backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
-      color: COLORS.chalk,
+      color: T.pickText,
       fontWeight: 600,
       fontSize: "13px",
     },
-    selectChipActive: { background: COLORS.chalk, color: "#fff" },
+    selectChipActive: { background: T.pickActiveBg, borderColor: T.pickActiveBg, color: T.pickActiveText },
     diceSection: { marginTop: "16px", paddingTop: "14px", borderTop: `1px dashed ${T.chipBorder}` },
     diceBtn: {
       padding: "9px 14px",
       borderRadius: "8px",
-      border: `1.5px solid ${COLORS.chalk}`,
+      border: `1.5px solid ${T.pickBorder}`,
       background: T.cardBg,
       backdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
       WebkitBackdropFilter: dark ? "none" : "blur(20px) saturate(160%)",
-      color: COLORS.chalk,
+      color: T.pickText,
+      fontWeight: 700,
+      fontSize: "12.5px",
+    },
+    // Outline button on the opaque modal card (pale in light theme).
+    diceBtnSolid: {
+      padding: "9px 14px",
+      borderRadius: "8px",
+      border: `1.5px solid ${COLORS.chalk}`,
+      background: "transparent",
+      color: dark ? "#9CC3DE" : COLORS.chalk,
       fontWeight: 700,
       fontSize: "12.5px",
     },
@@ -2578,7 +2599,7 @@ export default function BilliardsTracker() {
                     </div>
                   )}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
-                    <p style={styles.hint}>Отметьте, кто играет</p>
+                    <p style={styles.pickLabel}>Отметьте, кто играет</p>
                     {data.players.length >= 2 && (
                       <button style={styles.diceBtn} onClick={selectAllPlayers}>
                         Выбрать всех
@@ -2608,9 +2629,9 @@ export default function BilliardsTracker() {
 
                   {selected.length >= 2 && (
                     <div style={styles.diceSection}>
-                      <p style={styles.hint}>Кто разбивает первым?</p>
+                      <p style={styles.pickLabel}>Кто разбивает первым?</p>
                       <button style={styles.diceBtn} onClick={() => rollDiceFor(selected)} disabled={diceRolling}>
-                        <IconDice /> Кинуть кубики
+                        <IconDice color="currentColor" /> Кинуть кубики
                       </button>
 
                       {diceRolls && (
@@ -3787,7 +3808,7 @@ export default function BilliardsTracker() {
                   </>
                 )}
                 <div style={{ display: "flex", gap: "8px", marginTop: "16px" }} className="no-print">
-                  <button style={{ ...styles.diceBtn, flex: 1 }} onClick={() => startEditMatch(selectedMatch)}>
+                  <button style={{ ...styles.diceBtnSolid, flex: 1 }} onClick={() => startEditMatch(selectedMatch)}>
                     ✏️ Исправить счёт
                   </button>
                   <button style={{ ...styles.cancelBtn, flex: 1 }} onClick={() => setSelectedMatchId(null)}>
