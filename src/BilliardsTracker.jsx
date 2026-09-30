@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from "react";
-import { saveToCloud, loadFromCloud, cloudSyncAvailable } from "./cloudSync.js";
+import { saveToCloud, loadFromCloud, cloudSyncAvailable, clearCloud } from "./cloudSync.js";
 import { isCloudConfigured } from "./supabaseClient.js";
 import {
   sendMagicLink,
@@ -8,6 +8,7 @@ import {
   onAuthChange,
   getSession,
   signOut as clubSignOut,
+  deleteMyAccount,
   createClub,
   joinClub,
   leaveClub,
@@ -2167,6 +2168,52 @@ export default function BilliardsTracker() {
     setAuthEmail("");
   };
 
+  // Wipe everything this app keeps on the device (and in Telegram's cloud),
+  // then start fresh. Club data on the server is untouched — it belongs to
+  // the club; this device just signs out of it.
+  const [wipeBusy, setWipeBusy] = useState(false);
+  const wipeLocalAndReload = async () => {
+    pendingPersistRef.current = null;
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    if (clubRetryRef.current) clearTimeout(clubRetryRef.current);
+    try {
+      Object.keys(window.localStorage)
+        .filter((k) => k.startsWith("billiards-"))
+        .forEach((k) => window.localStorage.removeItem(k));
+    } catch (e) {
+      // storage unavailable
+    }
+    await clearCloud().catch(() => {});
+    window.location.reload();
+  };
+
+  const deleteDeviceData = async () => {
+    const typed = window.prompt(
+      "Удалить все данные приложения с этого устройства (игроки, партии, корзина, резервные копии" +
+        (authSession ? ", вход в аккаунт" : "") +
+        ")? Общие данные клуба на сервере останутся.\n\nЧтобы подтвердить, напишите: удалить"
+    );
+    if (!typed || typed.trim().toLowerCase() !== "удалить") return;
+    setWipeBusy(true);
+    if (authSession) await clubSignOut().catch(() => {});
+    await wipeLocalAndReload();
+  };
+
+  const deleteAccount = async () => {
+    const typed = window.prompt(
+      "Удалить аккаунт навсегда?\n\n• вы выйдете из всех клубов;\n• клубы, где вы единственный участник, удалятся вместе с данными;\n• общие данные клубов с другими участниками останутся у них;\n• данные на этом устройстве тоже удалятся.\n\nЧтобы подтвердить, напишите: удалить"
+    );
+    if (!typed || typed.trim().toLowerCase() !== "удалить") return;
+    setWipeBusy(true);
+    try {
+      await deleteMyAccount();
+      await wipeLocalAndReload();
+    } catch (e) {
+      setWipeBusy(false);
+      window.alert(e.message || "Не удалось удалить аккаунт");
+    }
+  };
+
   const rememberMyName = () => {
     const n = myName.trim().slice(0, 40);
     try {
@@ -3862,6 +3909,23 @@ export default function BilliardsTracker() {
                 <button style={styles.resetBtn} onClick={clearAll}>
                   Очистить все данные
                 </button>
+                <p style={{ ...styles.hint, marginTop: "14px" }}>
+                  Удалить приложение с этого устройства полностью: игроков, партии, корзину, резервные копии и вход в аккаунт. Общие
+                  данные клуба на сервере не затрагиваются.
+                </p>
+                <button style={{ ...styles.resetBtn, marginTop: "8px" }} onClick={deleteDeviceData} disabled={wipeBusy}>
+                  Удалить мои данные с устройства
+                </button>
+                {authSession && (
+                  <>
+                    <p style={{ ...styles.hint, marginTop: "14px" }}>
+                      Удалить аккаунт на сервере: выход из всех клубов, удаление клубов, где вы единственный участник.
+                    </p>
+                    <button style={{ ...styles.resetBtn, marginTop: "8px" }} onClick={deleteAccount} disabled={wipeBusy}>
+                      Удалить аккаунт
+                    </button>
+                  </>
+                )}
               </div>
             </section>
           )}

@@ -58,6 +58,20 @@ export async function signOut() {
   await supabase.auth.signOut();
 }
 
+// Deletes the signed-in account on the server (see supabase/account.sql):
+// memberships, clubs where this was the last member, and the user itself.
+export async function deleteMyAccount() {
+  const client = requireClient();
+  const { error } = await client.rpc("delete_my_account");
+  if (error) {
+    if (error.code === "PGRST202" || /delete_my_account/.test(error.message || "")) {
+      throw new Error("Удаление аккаунта ещё не включено на сервере (нужно выполнить supabase/account.sql)");
+    }
+    throw error;
+  }
+  await client.auth.signOut().catch(() => {});
+}
+
 async function currentUser() {
   const client = requireClient();
   const { data, error } = await client.auth.getUser();

@@ -106,3 +106,12 @@ export async function loadFromCloud() {
     return null;
   }
 }
+
+// Remove everything this app stored in Telegram CloudStorage.
+export async function clearCloud() {
+  const cloud = getCloud();
+  if (!cloud) return false;
+  const keys = [META_KEY];
+  for (let i = 0; i < MAX_CHUNKS; i++) keys.push(chunkKey(i));
+  return csRemoveItems(cloud, keys);
+}
