@@ -153,13 +153,29 @@ export async function fetchClubState(clubId) {
   return { data: data.data, updatedAt: new Date(data.updated_at).getTime() };
 }
 
-export async function pushClubState(clubId, appData) {
+// Writes are compare-and-swap on `updated_at`: read the current club state,
+// merge our copy into it (`merge(local, remoteRaw)`), and write only if nobody
+// else wrote in between — otherwise read again and re-merge. Two members
+// scoring at the same moment therefore can't overwrite each other.
+// Returns the state that was written, so the caller can pick up what others added.
+export async function pushClubState(clubId, appData, merge) {
   const client = requireClient();
-  const { error } = await client
-    .from("club_state")
-    .update({ data: appData, updated_at: new Date().toISOString() })
-    .eq("club_id", clubId);
-  if (error) throw error;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const { data: row, error } = await client.from("club_state").select("data, updated_at").eq("club_id", clubId).maybeSingle();
+    if (error) throw error;
+    if (!row) throw new Error("Нет доступа к данным клуба");
+    const merged = merge && row.data ? merge(appData, row.data) : appData;
+    const { data: written, error: writeError } = await client
+      .from("club_state")
+      .update({ data: merged, updated_at: new Date().toISOString() })
+      .eq("club_id", clubId)
+      .eq("updated_at", row.updated_at)
+      .select("club_id");
+    if (writeError) throw writeError;
+    if (written && written.length) return merged;
+    await new Promise((r) => setTimeout(r, 80 + Math.random() * 200 * (attempt + 1)));
+  }
+  throw new Error("Не удалось синхронизировать: слишком много одновременных изменений");
 }
 
 export function subscribeClubState(clubId, onChange) {
