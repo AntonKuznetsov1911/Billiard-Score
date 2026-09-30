@@ -538,11 +538,19 @@ const gateStyles = {
   },
 };
 
+// Dark theme: the room is gone — only what the lamp lights stays visible
+// (the shade itself and the pool of light on the cloth), fading into black.
+const DARK_SPOT_MASK = [
+  "radial-gradient(ellipse 30% 9% at 50% 29%, #000 45%, transparent 100%)",
+  "radial-gradient(ellipse 60% 15% at 50% 59%, #000 45%, rgba(0,0,0,0.5) 75%, transparent 100%)",
+  "radial-gradient(ellipse 20% 12% at 50% 40%, rgba(0,0,0,0.22) 30%, transparent 100%)",
+].join(", ");
+
 function TableArt({ gameType, lit, dark }) {
   const isPool = gameType === "pool";
-  // Light theme: the photo a touch brighter and livelier; dark theme: dimmed,
-  // desaturated "evening" look. Transitions so switching themes is smooth.
-  const photoFilter = dark ? "brightness(0.66) saturate(0.78)" : "brightness(1.12) saturate(1.12)";
+  // Light theme: the photo a touch brighter and livelier; dark theme: only
+  // the lamp-lit spot shows. Transitions so switching themes is smooth.
+  const photoFilter = dark ? "brightness(0.95) saturate(0.95)" : "brightness(1.12) saturate(1.12)";
   const layerStyle = {
     position: "absolute",
     inset: 0,
@@ -552,14 +560,32 @@ function TableArt({ gameType, lit, dark }) {
     filter: photoFilter,
     animation: "tableKenBurns 22s ease-in-out infinite alternate",
   };
+  const maskStyle = dark ? { maskImage: DARK_SPOT_MASK, WebkitMaskImage: DARK_SPOT_MASK } : {};
 
   return (
-    <div style={{ position: "absolute", inset: 0, overflow: "hidden" }} aria-hidden="true">
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden", background: dark ? "#050505" : "transparent" }} aria-hidden="true">
       {/* real table photos: a dim "lights off" shot by default, cross-fading
           to the lit russian/pool shot once a discipline is picked */}
-      <div style={{ ...layerStyle, backgroundImage: `url(${tableOffPhoto})`, opacity: lit ? 0 : 1 }} />
-      <div style={{ ...layerStyle, backgroundImage: `url(${tableRussianPhoto})`, opacity: lit && !isPool ? 1 : 0 }} />
-      <div style={{ ...layerStyle, backgroundImage: `url(${tablePoolPhoto})`, opacity: lit && isPool ? 1 : 0 }} />
+      <div style={{ position: "absolute", inset: 0, ...maskStyle }}>
+        <div style={{ ...layerStyle, backgroundImage: `url(${tableOffPhoto})`, opacity: lit ? 0 : 1 }} />
+        <div style={{ ...layerStyle, backgroundImage: `url(${tableRussianPhoto})`, opacity: lit && !isPool ? 1 : 0 }} />
+        <div style={{ ...layerStyle, backgroundImage: `url(${tablePoolPhoto})`, opacity: lit && isPool ? 1 : 0 }} />
+      </div>
+      {dark && (
+        // warm cone of light falling from the lamp onto the table
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            clipPath: "polygon(41% 30%, 59% 30%, 96% 70%, 4% 70%)",
+            background: "linear-gradient(180deg, rgba(255,214,140,0.16) 0%, rgba(255,214,140,0.05) 60%, transparent 100%)",
+            filter: "blur(18px)",
+            opacity: lit ? 1 : 0,
+            transition: "opacity 0.6s ease",
+            pointerEvents: "none",
+          }}
+        />
+      )}
       {/* vignette so header/cards stay legible over a busy photo */}
       <div
         style={{
@@ -596,9 +622,10 @@ function makeStyles(dark) {
         tableBorder: "rgba(255,255,255,0.18)",
         rowBorder: "rgba(255,255,255,0.08)",
         modalBg: "#1C1D18",
-        pickText: COLORS.chalk,
-        pickBorder: COLORS.chalk,
-        pickActiveBg: COLORS.chalk,
+        // Lighter "chalk" blue — the plain one vanishes on the black room.
+        pickText: "#9CC8E8",
+        pickBorder: "rgba(156,200,232,0.75)",
+        pickActiveBg: "#4F86AE",
         pickActiveText: "#fff",
       }
     : {
@@ -2472,8 +2499,8 @@ export default function BilliardsTracker() {
           style={{
             ...styles.outerOverlay,
             background: activeGame
-              ? dark ? "rgba(2,6,4,0.58)" : "rgba(4,10,7,0.34)"
-              : dark ? "rgba(2,6,4,0.32)" : "transparent",
+              ? dark ? "rgba(2,6,4,0.4)" : "rgba(4,10,7,0.34)"
+              : dark ? "rgba(2,6,4,0.12)" : "transparent",
           }}
         />
       </div>
