@@ -29,6 +29,11 @@ import {
   uid,
   loadInitial,
   normalizeData,
+  mergeData,
+  stampChanges,
+  addGameEvent,
+  undoGameEvent,
+  canUndoGame,
   formatDuration,
   computeStats,
   buildRatingTrend,
@@ -63,6 +68,11 @@ const RatingChartPanel = lazy(() => import("./RatingChart.jsx").then((m) => ({ d
 
 const STORAGE_KEY = "billiards-club-data";
 const ONBOARDING_KEY = "billiards-onboarding-v1";
+// Id of the club this device's data was last synced with (see club load).
+const CLUB_SYNCED_KEY = "billiards-club-synced";
+
+// Club state written by any member is untrusted — sanitize before merging.
+const mergeWithRemote = (local, remoteRaw) => mergeData(local, normalizeData(remoteRaw));
 
 const FONTS = `
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
@@ -1105,8 +1115,10 @@ export default function BilliardsTracker() {
         // cloud unavailable or empty
       }
 
+      // Both copies are this user's own data — merge them so nothing done on
+      // either side is lost.
       const cloudIsNewer = cloud && (!local || (cloud.updatedAt || 0) > (local.updatedAt || 0));
-      const chosen = cloudIsNewer ? cloud : local;
+      const chosen = cloud && local ? mergeData(local, cloud) : cloud || local;
 
       if (chosen) {
         setData(chosen);
@@ -1219,21 +1231,31 @@ export default function BilliardsTracker() {
       try {
         const remote = await fetchClubState(club.id);
         if (active && remote && remote.data) {
-          setData(normalizeData({ ...remote.data, updatedAt: remote.updatedAt }));
+          const remoteData = normalizeData({ ...remote.data, updatedAt: remote.data.updatedAt || remote.updatedAt });
+          // This device already synced with this club before — keep anything done
+          // offline since then. Joining fresh, the club's data replaces personal data.
+          let synced = null;
+          try {
+            synced = window.localStorage.getItem(CLUB_SYNCED_KEY);
+          } catch (e) {
+            // storage unavailable
+          }
+          setData((prev) => (synced === club.id ? mergeData(prev, remoteData) : remoteData));
+          try {
+            window.localStorage.setItem(CLUB_SYNCED_KEY, club.id);
+          } catch (e) {
+            // storage unavailable
+          }
         }
       } catch (e) {
         setClubError("Не удалось загрузить данные клуба");
       }
     })();
-    const unsubscribe = subscribeClubState(club.id, (remoteData, updatedAt) => {
-      // Ignore snapshots that are not newer than what we already have — that includes
-      // the echo of our own earlier push arriving after newer local taps, which would
-      // otherwise roll the score back and then forward again.
-      setData((prev) => {
-        const remoteStamp = (remoteData && remoteData.updatedAt) || updatedAt;
-        if (prev.updatedAt && remoteStamp <= prev.updatedAt) return prev;
-        return normalizeData({ ...remoteData, updatedAt: remoteStamp });
-      });
+    const unsubscribe = subscribeClubState(club.id, (remoteData) => {
+      // Merge rather than replace: another member's taps/matches are added to
+      // ours, and an old echo of our own earlier push changes nothing (so the
+      // score can't roll back and forth).
+      if (remoteData) setData((prev) => mergeWithRemote(prev, remoteData));
     });
     return () => {
       active = false;
@@ -1304,7 +1326,9 @@ export default function BilliardsTracker() {
     // remote changes via a separate setData call that never goes through persist(), so
     // there's no echo loop to guard against here.
     if (club) {
-      pushClubState(club.id, next).catch(() => setClubError("Не удалось синхронизировать с клубом"));
+      pushClubState(club.id, next, mergeWithRemote)
+        .then((merged) => setData((prev) => mergeData(prev, merged)))
+        .catch(() => setClubError("Не удалось синхронизировать с клубом"));
     }
   }, [club]);
 
@@ -1334,7 +1358,9 @@ export default function BilliardsTracker() {
     (updater) => {
       setData((prev) => {
         const next0 = typeof updater === "function" ? updater(prev) : updater;
-        const next = { ...next0, updatedAt: Date.now() };
+        if (next0 === prev) return prev;
+        const now = Date.now();
+        const next = { ...stampChanges(prev, next0, now), updatedAt: now };
         persist(next);
         return next;
       });
@@ -1468,11 +1494,13 @@ export default function BilliardsTracker() {
           id: uid(),
           participants: [...selected],
           scores,
+          baseScores: scores,
+          events: [],
+          undone: [],
           breakerId,
           gameType: prev.gameType || "russian",
           mode,
           targets: buildTargets(mode, selected),
-          actionLog: [],
           startedAt: new Date().toISOString(),
         },
       };
@@ -1500,7 +1528,9 @@ export default function BilliardsTracker() {
           gameType: prev.gameType || "russian",
           mode,
           targets,
-          actionLog: [],
+          baseScores: scores,
+          events: [],
+          undone: [],
           startedAt: new Date().toISOString(),
         },
       };
@@ -1547,11 +1577,13 @@ export default function BilliardsTracker() {
           id: uid(),
           participants: [m.a, m.b],
           scores: { [m.a]: 0, [m.b]: 0 },
+          baseScores: { [m.a]: 0, [m.b]: 0 },
+          events: [],
+          undone: [],
           breakerId: null,
           gameType: prev.gameType || "russian",
           mode,
           targets: buildTargets(mode, [m.a, m.b]),
-          actionLog: [],
           startedAt: new Date().toISOString(),
           bracketRound: roundIdx,
           bracketMatch: matchIdx,
@@ -1580,13 +1612,11 @@ export default function BilliardsTracker() {
     }
     haptic("light");
     if (!fast) setScorePulse({ pid: playerId, ts: Date.now() });
+    // Each tap is recorded as its own event, so taps made on another club
+    // member's device at the same time are merged in rather than overwritten.
     updateData((prev) => {
       if (!prev.activeGame) return prev;
-      const before = prev.activeGame.scores[playerId] || 0;
-      const after = Math.max(0, before + delta);
-      const scores = { ...prev.activeGame.scores, [playerId]: after };
-      const actionLog = [...(prev.activeGame.actionLog || []), { pid: playerId, prev: before }].slice(-5);
-      return { ...prev, activeGame: { ...prev.activeGame, scores, actionLog } };
+      return { ...prev, activeGame: addGameEvent(prev.activeGame, { id: uid(), pid: playerId, d: delta, ts: Date.now() }) };
     });
   };
 
@@ -1596,20 +1626,15 @@ export default function BilliardsTracker() {
       if (!prev.activeGame) return prev;
       const before = prev.activeGame.scores[playerId] || 0;
       if (before === n) return prev;
-      const scores = { ...prev.activeGame.scores, [playerId]: n };
-      const actionLog = [...(prev.activeGame.actionLog || []), { pid: playerId, prev: before }].slice(-5);
-      return { ...prev, activeGame: { ...prev.activeGame, scores, actionLog } };
+      return { ...prev, activeGame: addGameEvent(prev.activeGame, { id: uid(), pid: playerId, v: n, ts: Date.now() }) };
     });
   };
 
   const undoLast = () => {
     haptic("light");
     updateData((prev) => {
-      const g = prev.activeGame;
-      if (!g || !g.actionLog || g.actionLog.length === 0) return prev;
-      const last = g.actionLog[g.actionLog.length - 1];
-      const scores = { ...g.scores, [last.pid]: last.prev };
-      return { ...prev, activeGame: { ...g, scores, actionLog: g.actionLog.slice(0, -1) } };
+      if (!canUndoGame(prev.activeGame)) return prev;
+      return { ...prev, activeGame: undoGameEvent(prev.activeGame) };
     });
   };
 
@@ -2055,7 +2080,9 @@ export default function BilliardsTracker() {
     try {
       await restoreClubHistory(h.id);
       const fresh = await fetchClubState(club.id);
-      if (fresh && fresh.data) setData(normalizeData({ ...fresh.data, updatedAt: (fresh.data && fresh.data.updatedAt) || fresh.updatedAt }));
+      // Applied as a fresh local change: every restored record counts as just
+      // edited, so older deletions on other members' devices can't win the merge.
+      if (fresh && fresh.data) updateData(normalizeData(fresh.data));
       setClubHistory(await listClubHistory(club.id));
       haptic("success");
     } catch (e) {
@@ -2799,8 +2826,8 @@ export default function BilliardsTracker() {
                           ▣ Обычный вид
                         </button>
                         <button
-                          style={{ ...styles.fsTopBtn, opacity: !activeGame.actionLog || activeGame.actionLog.length === 0 ? 0.4 : 1 }}
-                          disabled={!activeGame.actionLog || activeGame.actionLog.length === 0}
+                          style={{ ...styles.fsTopBtn, opacity: canUndoGame(activeGame) ? 1 : 0.4 }}
+                          disabled={!canUndoGame(activeGame)}
                           onClick={undoLast}
                         >
                           ↶ Отменить
@@ -3022,7 +3049,7 @@ export default function BilliardsTracker() {
                   </div>
                   <button
                     style={{ ...styles.diceBtn, marginTop: "12px", width: "100%" }}
-                    disabled={!activeGame.actionLog || activeGame.actionLog.length === 0}
+                    disabled={!canUndoGame(activeGame)}
                     onClick={undoLast}
                   >
                     ↶ Отменить последнее действие

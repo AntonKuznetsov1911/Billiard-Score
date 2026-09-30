@@ -15,6 +15,9 @@ export function loadInitial() {
     theme: "light",
     gameType: "russian",
     russianMode: "free",
+    deletedPlayers: [],
+    endedGames: [],
+    metaAt: 0,
     updatedAt: 0,
   };
 }
@@ -23,6 +26,7 @@ const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const cleanStr = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
 const cleanNum = (v, max = 100000) => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(max, v)) : 0);
+const cleanStamp = (v) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
 const cleanScores = (v) => {
   const out = {};
   if (isObj(v)) Object.keys(v).slice(0, 20).forEach((k) => (out[k] = cleanNum(v[k], 999)));
@@ -66,6 +70,7 @@ export function sanitizeMatches(list) {
       solo: !!m.solo,
       breakerId: typeof m.breakerId === "string" ? m.breakerId : null,
       breakerPotted: m.breakerPotted === true || m.breakerPotted === false ? m.breakerPotted : null,
+      modifiedAt: cleanStamp(m.modifiedAt),
     }));
 }
 
@@ -113,16 +118,103 @@ export function restoreMatchFromTrash(data, matchId) {
   };
 }
 
+const EVENT_LIMIT = 3000;
+const ENDED_LIMIT = 100;
+const TOMBSTONE_LIMIT = 1000;
+const cleanIds = (v, limit) =>
+  (Array.isArray(v) ? v : []).filter((x) => typeof x === "string" && x).map((x) => x.slice(0, 64)).slice(-limit);
+
+// A running game keeps its score as a log of events (+1, −1, "set to N")
+// on top of `baseScores`, instead of only the final numbers. Two devices
+// scoring the same game at once then just add events to the same log, and
+// merging their copies can't lose anyone's taps. `scores` is always the
+// derived total, kept so the rest of the app can read it directly.
+function sanitizeEvent(e) {
+  if (!isObj(e) || typeof e.id !== "string" || !e.id || typeof e.pid !== "string") return null;
+  const ts = typeof e.ts === "number" && Number.isFinite(e.ts) ? e.ts : 0;
+  if (typeof e.v === "number" && Number.isFinite(e.v)) {
+    return { id: e.id.slice(0, 64), pid: e.pid.slice(0, 64), ts, v: Math.max(0, Math.min(999, Math.floor(e.v))) };
+  }
+  if (typeof e.d === "number" && Number.isFinite(e.d)) {
+    return { id: e.id.slice(0, 64), pid: e.pid.slice(0, 64), ts, d: Math.max(-999, Math.min(999, Math.round(e.d))) };
+  }
+  return null;
+}
+
+// Player removals are remembered as {id, at} so a removal on one device
+// isn't undone by another device's stale copy — while re-adding/restoring the
+// player later (modifiedAt > at) still wins.
+function cleanTombstones(v) {
+  return (Array.isArray(v) ? v : [])
+    .filter((t) => isObj(t) && typeof t.id === "string" && t.id)
+    .map((t) => ({ id: t.id.slice(0, 64), at: cleanStamp(t.at) }))
+    .slice(-TOMBSTONE_LIMIT);
+}
+
+function mergeTombstones(x, y) {
+  const at = new Map();
+  [...(x || []), ...(y || [])].forEach((t) => at.set(t.id, Math.max(at.get(t.id) || 0, t.at)));
+  return [...at.entries()]
+    .map(([id, t]) => ({ id, at: t }))
+    .sort((p, q) => p.at - q.at || (p.id < q.id ? -1 : 1))
+    .slice(-TOMBSTONE_LIMIT);
+}
+
+const eventOrder = (x, y) => x.ts - y.ts || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0);
+
+export function computeGameScores(g) {
+  const scores = {};
+  g.participants.forEach((pid) => (scores[pid] = (g.baseScores && g.baseScores[pid]) || 0));
+  const undone = new Set(g.undone || []);
+  [...(g.events || [])].sort(eventOrder).forEach((e) => {
+    if (undone.has(e.id) || !(e.pid in scores)) return;
+    scores[e.pid] = "v" in e ? e.v : Math.max(0, Math.min(999, scores[e.pid] + e.d));
+  });
+  return scores;
+}
+
+function withScores(g) {
+  return { ...g, scores: computeGameScores(g) };
+}
+
+export function addGameEvent(g, event) {
+  const e = sanitizeEvent(event);
+  if (!g || !e) return g;
+  return withScores({ ...g, events: [...(g.events || []), e].slice(-EVENT_LIMIT) });
+}
+
+function lastUndoableEvent(g) {
+  if (!g) return null;
+  const undone = new Set(g.undone || []);
+  const live = (g.events || []).filter((e) => !undone.has(e.id)).sort(eventOrder);
+  return live.length ? live[live.length - 1] : null;
+}
+
+export function canUndoGame(g) {
+  return !!lastUndoableEvent(g);
+}
+
+export function undoGameEvent(g) {
+  const last = lastUndoableEvent(g);
+  if (!last) return g;
+  return withScores({ ...g, undone: [...(g.undone || []), last.id].slice(-EVENT_LIMIT) });
+}
+
 function sanitizeActiveGame(g) {
   if (!isObj(g) || !Array.isArray(g.participants) || !g.participants.length || !g.participants.every((x) => typeof x === "string")) {
     return null;
   }
-  return {
-    ...g,
+  const { actionLog, ...rest } = g;
+  const legacy = !Array.isArray(g.events);
+  return withScores({
+    ...rest,
+    id: typeof g.id === "string" && g.id ? g.id.slice(0, 64) : `g-${typeof g.startedAt === "string" ? g.startedAt : "0"}`,
     participants: g.participants.slice(0, 20),
-    scores: cleanScores(g.scores),
-    actionLog: Array.isArray(g.actionLog) ? g.actionLog.filter((a) => isObj(a) && typeof a.pid === "string").slice(-5) : [],
-  };
+    // Games saved before the event log existed start from their stored score.
+    baseScores: cleanScores(legacy ? g.scores : g.baseScores),
+    events: legacy ? [] : g.events.map(sanitizeEvent).filter(Boolean).slice(-EVENT_LIMIT),
+    undone: cleanIds(g.undone, EVENT_LIMIT),
+  });
 }
 
 export function normalizeData(input) {
@@ -137,7 +229,125 @@ export function normalizeData(input) {
     theme: parsed.theme === "dark" ? "dark" : "light",
     gameType: parsed.gameType === "pool" ? "pool" : "russian",
     russianMode: RUSSIAN_MODES[parsed.russianMode] ? parsed.russianMode : "free",
+    deletedPlayers: cleanTombstones(parsed.deletedPlayers),
+    endedGames: cleanIds(parsed.endedGames, ENDED_LIMIT),
+    metaAt: cleanStamp(parsed.metaAt),
     updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
+  };
+}
+
+const META_KEYS = ["activeSeries", "activeBracket", "theme", "gameType", "russianMode"];
+
+// Called on every local change (prev → next) to record *what* changed, so
+// that merging with another device's copy later knows which version of each
+// record is newer: edited/added players and matches get `modifiedAt`,
+// removed players leave a tombstone, a finished or cancelled game is marked
+// ended, and series/bracket/settings changes bump `metaAt`.
+export function stampChanges(prev, next, now = Date.now()) {
+  if (!prev || !next || prev === next) return next;
+  let out = next;
+  const stampList = (key) => {
+    if (next[key] === prev[key]) return;
+    const before = new Map((prev[key] || []).map((x) => [x.id, x]));
+    out = { ...out, [key]: (next[key] || []).map((x) => (before.get(x.id) === x ? x : { ...x, modifiedAt: now })) };
+  };
+  stampList("players");
+  stampList("matches");
+  if (next.players !== prev.players) {
+    const kept = new Set((next.players || []).map((p) => p.id));
+    const removed = (prev.players || []).filter((p) => !kept.has(p.id)).map((p) => p.id);
+    if (removed.length) out = { ...out, deletedPlayers: mergeTombstones(prev.deletedPlayers, removed.map((id) => ({ id, at: now }))) };
+  }
+  const pg = prev.activeGame;
+  if (pg && (!next.activeGame || next.activeGame.id !== pg.id)) {
+    out = { ...out, endedGames: [...(out.endedGames || prev.endedGames || []).filter((id) => id !== pg.id), pg.id].slice(-ENDED_LIMIT) };
+  }
+  if (META_KEYS.some((k) => next[k] !== prev[k])) out = { ...out, metaAt: now };
+  return out;
+}
+
+const unionIds = (x, y, limit) => {
+  const seen = new Set();
+  return [...(x || []), ...(y || [])].filter((id) => (seen.has(id) ? false : (seen.add(id), true))).slice(-limit);
+};
+
+function mergeActiveGames(x, y) {
+  const events = new Map();
+  [...(x.events || []), ...(y.events || [])].forEach((e) => events.set(e.id, e));
+  return withScores({
+    ...y,
+    baseScores: { ...(x.baseScores || {}), ...(y.baseScores || {}) },
+    events: [...events.values()].sort(eventOrder).slice(-EVENT_LIMIT),
+    undone: unionIds(x.undone, y.undone, EVENT_LIMIT),
+  });
+}
+
+// Combine two copies of the app state (this device's and another member's)
+// without losing either side's work. Order of arguments doesn't matter and
+// merging the same copy twice changes nothing, so echoes and retries are safe.
+// (When both copies carry the same `updatedAt`, `a` counts as newer.)
+export function mergeData(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  // "newer" only breaks ties; otherwise every record is decided on its own.
+  const bNewer = (b.updatedAt || 0) > (a.updatedAt || 0);
+  const older = bNewer ? a : b;
+  const newer = bNewer ? b : a;
+
+  const deletedPlayers = mergeTombstones(older.deletedPlayers, newer.deletedPlayers);
+  const removedAt = new Map(deletedPlayers.map((t) => [t.id, t.at]));
+  const players = new Map();
+  [...(newer.players || []), ...(older.players || [])].forEach((p) => {
+    if (removedAt.has(p.id) && cleanStamp(p.modifiedAt) <= removedAt.get(p.id)) return;
+    const cur = players.get(p.id);
+    if (!cur || cleanStamp(p.modifiedAt) > cleanStamp(cur.modifiedAt)) players.set(p.id, p);
+  });
+
+  // A match is either in the list or in the trash; whichever change happened
+  // last (edit/restore → modifiedAt, delete → deletedAt) wins.
+  const records = new Map();
+  const consider = (rec, inTrash) => {
+    const stamp = cleanStamp(inTrash ? rec.deletedAt : rec.modifiedAt);
+    const cur = records.get(rec.id);
+    if (!cur || stamp > cur.stamp) records.set(rec.id, { rec, inTrash, stamp });
+  };
+  [newer, older].forEach((side) => {
+    (side.matches || []).forEach((m) => consider(m, false));
+    (side.trash || []).forEach((m) => consider(m, true));
+  });
+  const all = [...records.values()];
+  const byDate = (x, y) => new Date(x.date).getTime() - new Date(y.date).getTime();
+  const matches = all.filter((r) => !r.inTrash).map((r) => r.rec).sort(byDate);
+  const trash = all
+    .filter((r) => r.inTrash)
+    .map((r) => r.rec)
+    .sort((x, y) => (x.deletedAt || 0) - (y.deletedAt || 0))
+    .slice(-TRASH_LIMIT);
+
+  const endedGames = unionIds(older.endedGames, newer.endedGames, ENDED_LIMIT);
+  const ended = new Set(endedGames);
+  const games = [newer.activeGame, older.activeGame].filter((g) => g && !ended.has(g.id));
+  let activeGame = games[0] || null;
+  if (games.length === 2) {
+    if (games[0].id === games[1].id) activeGame = mergeActiveGames(games[1], games[0]);
+    else if (String(games[1].startedAt || "") > String(games[0].startedAt || "")) activeGame = games[1];
+  }
+
+  const metaSource = cleanStamp(older.metaAt) > cleanStamp(newer.metaAt) ? older : newer;
+  const meta = {};
+  META_KEYS.forEach((k) => (meta[k] = metaSource[k]));
+
+  return {
+    ...newer,
+    ...meta,
+    players: [...players.values()],
+    matches,
+    trash,
+    activeGame,
+    deletedPlayers,
+    endedGames,
+    metaAt: Math.max(cleanStamp(older.metaAt), cleanStamp(newer.metaAt)),
+    updatedAt: Math.max(older.updatedAt || 0, newer.updatedAt || 0),
   };
 }
 

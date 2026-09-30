@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   uid,
+  mergeData,
+  stampChanges,
+  addGameEvent,
+  undoGameEvent,
+  canUndoGame,
   loadInitial,
   normalizeData,
   formatDuration,
@@ -494,7 +499,11 @@ describe("normalizeData treats input as untrusted", () => {
   it("rejects an activeGame without a participants array", () => {
     expect(normalizeData({ activeGame: { participants: "a", scores: {} } }).activeGame).toBeNull();
     const g = normalizeData({ activeGame: { participants: ["a"], scores: { a: 2 }, actionLog: [1, { pid: "a", prev: 1 }] } }).activeGame;
-    expect(g.actionLog).toEqual([{ pid: "a", prev: 1 }]);
+    // A game saved before the event log existed keeps its score as the base.
+    expect(g.scores).toEqual({ a: 2 });
+    expect(g.baseScores).toEqual({ a: 2 });
+    expect(g.events).toEqual([]);
+    expect(g.actionLog).toBeUndefined();
   });
 });
 
@@ -534,5 +543,105 @@ describe("match trash", () => {
     expect(out.trash).toHaveLength(1);
     expect(out.trash[0].deletedAt).toBe(5);
     expect(normalizeData({}).trash).toEqual([]);
+  });
+});
+
+describe("concurrent club edits", () => {
+  const game = (extra = {}) =>
+    normalizeData({ activeGame: { id: "g1", participants: ["a", "b"], scores: {}, events: [], startedAt: "2024-01-01T10:00:00Z", ...extra } })
+      .activeGame;
+  const tap = (g, id, pid, d, ts) => addGameEvent(g, { id, pid, d, ts });
+  const state = (over = {}) => normalizeData({ players: [{ id: "a", name: "A" }, { id: "b", name: "B" }], ...over });
+
+  it("keeps both devices' taps on the same game", () => {
+    const base = game();
+    const d1 = { ...state(), activeGame: tap(tap(base, "e1", "a", 1, 1), "e2", "a", 1, 3), updatedAt: 3 };
+    const d2 = { ...state(), activeGame: tap(base, "e3", "b", 1, 2), updatedAt: 2 };
+    const m = mergeData(d1, d2);
+    expect(m.activeGame.scores).toEqual({ a: 2, b: 1 });
+    expect(mergeData(d2, d1).activeGame.scores).toEqual({ a: 2, b: 1 });
+    // an old echo of our own earlier state changes nothing
+    expect(mergeData(m, d1).activeGame.scores).toEqual({ a: 2, b: 1 });
+    expect(mergeData(m, m).activeGame.events).toHaveLength(3);
+  });
+
+  it("undo marks an event undone and survives merging", () => {
+    let g = tap(tap(game(), "e1", "a", 1, 1), "e2", "b", 1, 2);
+    const other = { ...state(), activeGame: g, updatedAt: 2 };
+    expect(canUndoGame(g)).toBe(true);
+    g = undoGameEvent(g);
+    expect(g.scores).toEqual({ a: 1, b: 0 });
+    const mine = { ...state(), activeGame: g, updatedAt: 5 };
+    expect(mergeData(other, mine).activeGame.scores).toEqual({ a: 1, b: 0 });
+    expect(canUndoGame(undoGameEvent(g))).toBe(false);
+  });
+
+  it("clamps at zero and supports setting a score", () => {
+    let g = tap(game(), "e1", "a", -1, 1);
+    expect(g.scores.a).toBe(0);
+    g = addGameEvent(g, { id: "e2", pid: "a", v: 7, ts: 2 });
+    g = tap(g, "e3", "a", 1, 3);
+    expect(g.scores.a).toBe(8);
+  });
+
+  it("a finished or cancelled game is not resurrected by another device", () => {
+    const g = tap(game(), "e1", "a", 1, 1);
+    const prev = { ...state(), activeGame: g, updatedAt: 1 };
+    const finished = stampChanges(prev, { ...prev, activeGame: null, matches: [{ id: "m1", participants: ["a", "b"], date: "2024-01-01" }] }, 10);
+    expect(finished.endedGames).toEqual(["g1"]);
+    const late = { ...prev, activeGame: tap(g, "e2", "b", 1, 11), updatedAt: 11 };
+    const m = mergeData({ ...finished, updatedAt: 10 }, late);
+    expect(m.activeGame).toBeNull();
+    expect(m.matches.map((x) => x.id)).toEqual(["m1"]);
+  });
+
+  it("merges matches added on different devices and keeps deletions", () => {
+    const base = state({ matches: [{ id: "m0", participants: ["a"], date: "2024-01-01" }] });
+    const d1 = stampChanges(base, { ...base, matches: [...base.matches, { id: "m1", participants: ["a"], date: "2024-01-02" }] }, 5);
+    const del = { ...base, matches: [], trash: [{ ...base.matches[0], deletedAt: 6 }] };
+    const m = mergeData({ ...d1, updatedAt: 5 }, { ...del, updatedAt: 6 });
+    expect(m.matches.map((x) => x.id)).toEqual(["m1"]);
+    expect(m.trash.map((x) => x.id)).toEqual(["m0"]);
+    // restoring later wins over the older deletion
+    const restored = stampChanges(del, { ...del, matches: [base.matches[0]], trash: [] }, 9);
+    const m2 = mergeData(m, { ...restored, updatedAt: 9 });
+    expect(m2.matches.map((x) => x.id)).toEqual(["m0", "m1"]);
+    expect(m2.trash).toEqual([]);
+  });
+
+  it("an edit on one device and a new match on another both survive", () => {
+    const base = state({ matches: [{ id: "m0", participants: ["a", "b"], date: "2024-01-01", scores: { a: 1, b: 0 }, winnerId: "a" }] });
+    const edited = stampChanges(base, { ...base, matches: [{ ...base.matches[0], scores: { a: 3, b: 0 } }] }, 7);
+    const added = stampChanges(base, { ...base, matches: [...base.matches, { id: "m1", participants: ["a"], date: "2024-01-03" }] }, 8);
+    const m = mergeData({ ...edited, updatedAt: 7 }, { ...added, updatedAt: 8 });
+    expect(m.matches.find((x) => x.id === "m0").scores).toEqual({ a: 3, b: 0 });
+    expect(m.matches).toHaveLength(2);
+  });
+
+  it("player removal and addition on different devices both apply", () => {
+    const base = state();
+    const removed = stampChanges(base, { ...base, players: base.players.filter((p) => p.id !== "b") }, 3);
+    const added = stampChanges(base, { ...base, players: [...base.players, { id: "c", name: "C" }] }, 4);
+    const m = mergeData({ ...removed, updatedAt: 3 }, { ...added, updatedAt: 4 });
+    expect(m.players.map((p) => p.id).sort()).toEqual(["a", "c"]);
+    // bringing the player back later (e.g. restoring club history) wins over the removal
+    const back = stampChanges(removed, { ...removed, players: [...removed.players, { id: "b", name: "B" }] }, 12);
+    expect(mergeData(m, { ...back, updatedAt: 12 }).players.map((p) => p.id).sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("restoring a snapshot over a sabotage deletion isn't undone by other devices", () => {
+    const base = state({ matches: [{ id: "m0", participants: ["a"], date: "2024-01-01" }] });
+    const wiped = stampChanges(base, { ...base, players: [], matches: [], trash: [{ ...base.matches[0], deletedAt: 5 }] }, 5);
+    const restored = stampChanges(wiped, normalizeData(base), 20);
+    const m = mergeData({ ...restored, updatedAt: 20 }, { ...wiped, updatedAt: 5 });
+    expect(m.matches.map((x) => x.id)).toEqual(["m0"]);
+    expect(m.players).toHaveLength(2);
+  });
+
+  it("series/settings come from the side that changed them last, not the last tap", () => {
+    const base = { ...state(), activeSeries: { id: "s", wins: {} } };
+    const finished = stampChanges(base, { ...base, activeSeries: { id: "s", wins: { a: 1 } } }, 5);
+    const tapper = { ...base, updatedAt: 9 };
+    expect(mergeData({ ...finished, updatedAt: 5 }, tapper).activeSeries.wins).toEqual({ a: 1 });
   });
 });
