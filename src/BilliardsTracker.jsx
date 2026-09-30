@@ -1529,13 +1529,17 @@ export default function BilliardsTracker() {
     };
   }, [flushPersist]);
 
+  // Display name attached to changes (who recorded/edited/deleted a match).
+  const authorRef = useRef("");
+  authorRef.current = myName.trim().slice(0, 40);
+
   const updateData = useCallback(
     (updater) => {
       setData((prev) => {
         const next0 = typeof updater === "function" ? updater(prev) : updater;
         if (next0 === prev) return prev;
         const now = Date.now();
-        const next = { ...stampChanges(prev, next0, now), updatedAt: now };
+        const next = { ...stampChanges(prev, next0, now, authorRef.current), updatedAt: now };
         persist(next);
         return next;
       });
@@ -1791,7 +1795,7 @@ export default function BilliardsTracker() {
     // member's device at the same time are merged in rather than overwritten.
     updateData((prev) => {
       if (!prev.activeGame) return prev;
-      return { ...prev, activeGame: addGameEvent(prev.activeGame, { id: uid(), pid: playerId, d: delta, ts: Date.now() }) };
+      return { ...prev, activeGame: addGameEvent(prev.activeGame, { id: uid(), pid: playerId, d: delta, ts: Date.now(), by: authorRef.current }) };
     });
   };
 
@@ -1801,7 +1805,7 @@ export default function BilliardsTracker() {
       if (!prev.activeGame) return prev;
       const before = prev.activeGame.scores[playerId] || 0;
       if (before === n) return prev;
-      return { ...prev, activeGame: addGameEvent(prev.activeGame, { id: uid(), pid: playerId, v: n, ts: Date.now() }) };
+      return { ...prev, activeGame: addGameEvent(prev.activeGame, { id: uid(), pid: playerId, v: n, ts: Date.now(), by: authorRef.current }) };
     });
   };
 
@@ -3988,6 +3992,14 @@ export default function BilliardsTracker() {
                     : ""}
                 </p>
                 <p style={styles.modalHint}>Продолжительность: {formatDuration(selectedMatch.durationMs)}</p>
+                {(selectedMatch.createdBy || selectedMatch.modifiedBy) && (
+                  <p style={styles.modalHint}>
+                    {selectedMatch.createdBy ? `Записал(а): ${selectedMatch.createdBy}` : ""}
+                    {selectedMatch.modifiedBy && selectedMatch.modifiedAt && selectedMatch.modifiedBy !== selectedMatch.createdBy
+                      ? `${selectedMatch.createdBy ? " · " : ""}последнее изменение: ${selectedMatch.modifiedBy}, ${new Date(selectedMatch.modifiedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`
+                      : ""}
+                  </p>
+                )}
                 {selectedMatch.settlement && (
                   <>
                     <p style={styles.modalHint}>Круговой расчёт (разница очков между парами):</p>
