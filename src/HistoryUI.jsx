@@ -100,7 +100,7 @@ export function ClubHistoryModal({ items, members, myId, isCreator, busy, error,
                   </span>
                 </span>
                 {isCreator && (
-                  <button style={{ ...styles.diceBtn, padding: "6px 10px", fontSize: "12px" }} disabled={busy} onClick={() => onRestore(h)}>
+                  <button style={{ ...styles.diceBtnSolid, padding: "6px 10px", fontSize: "12px" }} disabled={busy} onClick={() => onRestore(h)}>
                     Вернуть
                   </button>
                 )}
