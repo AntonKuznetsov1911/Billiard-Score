@@ -6,6 +6,8 @@ import {
   addGameEvent,
   undoGameEvent,
   canUndoGame,
+  isGameStale,
+  lastGameActivity,
   loadInitial,
   normalizeData,
   formatDuration,
@@ -643,5 +645,17 @@ describe("concurrent club edits", () => {
     const finished = stampChanges(base, { ...base, activeSeries: { id: "s", wins: { a: 1 } } }, 5);
     const tapper = { ...base, updatedAt: 9 };
     expect(mergeData({ ...finished, updatedAt: 5 }, tapper).activeSeries.wins).toEqual({ a: 1 });
+  });
+});
+
+describe("forgotten game reminder", () => {
+  const g = { startedAt: "2024-01-01T10:00:00Z", events: [{ id: "e", pid: "a", d: 1, ts: Date.parse("2024-01-01T11:00:00Z") }] };
+  it("counts the last score change as activity", () => {
+    expect(lastGameActivity(g)).toBe(Date.parse("2024-01-01T11:00:00Z"));
+  });
+  it("is stale only after two idle hours", () => {
+    expect(isGameStale(g, Date.parse("2024-01-01T12:59:00Z"))).toBe(false);
+    expect(isGameStale(g, Date.parse("2024-01-01T13:00:00Z"))).toBe(true);
+    expect(isGameStale(null)).toBe(false);
   });
 });

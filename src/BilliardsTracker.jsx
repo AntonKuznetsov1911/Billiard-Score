@@ -34,6 +34,8 @@ import {
   addGameEvent,
   undoGameEvent,
   canUndoGame,
+  isGameStale,
+  lastGameActivity,
   formatDuration,
   computeStats,
   buildRatingTrend,
@@ -1128,6 +1130,9 @@ export default function BilliardsTracker() {
   // Club sync state for the header badge: "pending" (changes not yet on the
   // server), "synced", or "error" (will retry).
   const [clubSync, setClubSync] = useState("synced");
+  // Id of a forgotten game whose "still playing?" reminder was dismissed.
+  const [staleDismissedId, setStaleDismissedId] = useState(null);
+  const [minuteTick, setMinuteTick] = useState(() => Date.now());
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [tableLit, setTableLit] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -1179,6 +1184,12 @@ export default function BilliardsTracker() {
   });
   const [clubNameSaved, setClubNameSaved] = useState(null); // name stored on the server for the current club
   const [nameMsg, setNameMsg] = useState("");
+
+  useEffect(() => {
+    if (!data.activeGame) return;
+    const t = setInterval(() => setMinuteTick(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, [data.activeGame]);
 
   useEffect(() => {
     const goOnline = () => setIsOffline(false);
@@ -3123,6 +3134,26 @@ export default function BilliardsTracker() {
                       ⛶ Крупный режим
                     </button>
                   </div>
+                  {isGameStale(activeGame, minuteTick) && staleDismissedId !== activeGame.id && (
+                    <div style={{ ...styles.breakerBanner, textAlign: "left" }} className="no-print">
+                      ⏰ Партия открыта уже {formatDuration(minuteTick - new Date(activeGame.startedAt).getTime())}
+                      {(activeGame.events || []).length
+                        ? `, счёт последний раз менялся ${formatDuration(minuteTick - lastGameActivity(activeGame))} назад`
+                        : ", а счёт с тех пор не менялся"}
+                      . Её не забыли завершить?
+                      <div style={{ display: "flex", gap: "8px", marginTop: "8px", flexWrap: "wrap" }}>
+                        <button style={styles.diceBtn} onClick={() => setStaleDismissedId(activeGame.id)}>
+                          Продолжаем
+                        </button>
+                        <button style={styles.diceBtn} onClick={attemptFinish}>
+                          Завершить
+                        </button>
+                        <button style={styles.diceBtn} onClick={cancelGame}>
+                          Отменить
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   {gm && (
                     <p style={styles.hint}>
                       {gm.name} ({gm.alias})

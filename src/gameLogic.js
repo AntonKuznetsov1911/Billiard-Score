@@ -190,6 +190,20 @@ function lastUndoableEvent(g) {
   return live.length ? live[live.length - 1] : null;
 }
 
+// When anything last happened in a running game (start or last score change).
+export function lastGameActivity(g) {
+  if (!g) return 0;
+  const started = g.startedAt ? new Date(g.startedAt).getTime() || 0 : 0;
+  return (g.events || []).reduce((m, e) => Math.max(m, e.ts || 0), started);
+}
+
+// A game nobody has touched for a while was most likely forgotten.
+export const STALE_GAME_MS = 2 * 3600000;
+export function isGameStale(g, now = Date.now(), idleMs = STALE_GAME_MS) {
+  const last = lastGameActivity(g);
+  return !!last && now - last >= idleMs;
+}
+
 export function canUndoGame(g) {
   return !!lastUndoableEvent(g);
 }
