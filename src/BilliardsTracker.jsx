@@ -3709,7 +3709,13 @@ export default function BilliardsTracker() {
                 <h2 style={styles.h2}>Оформление</h2>
                 <div style={styles.settingRow}>
                   <span>🌙 Тёмная тема</span>
-                  <button onClick={toggleTheme} style={{ ...styles.switchTrack, ...(dark ? styles.switchTrackOn : {}) }}>
+                  <button
+                    onClick={toggleTheme}
+                    role="switch"
+                    aria-checked={dark}
+                    aria-label="Тёмная тема"
+                    style={{ ...styles.switchTrack, ...(dark ? styles.switchTrackOn : {}) }}
+                  >
                     <span style={{ ...styles.switchThumb, ...(dark ? styles.switchThumbOn : {}) }} />
                   </button>
                 </div>
