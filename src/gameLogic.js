@@ -71,6 +71,8 @@ export function sanitizeMatches(list) {
       breakerId: typeof m.breakerId === "string" ? m.breakerId : null,
       breakerPotted: m.breakerPotted === true || m.breakerPotted === false ? m.breakerPotted : null,
       modifiedAt: cleanStamp(m.modifiedAt),
+      createdBy: cleanStr(m.createdBy, 40),
+      modifiedBy: cleanStr(m.modifiedBy, 40),
     }));
 }
 
@@ -79,7 +81,11 @@ const TRASH_LIMIT = 300;
 // Deleted matches wait here (and can be restored) instead of vanishing.
 export function sanitizeTrash(list) {
   return sanitizeMatches(list)
-    .map((m) => ({ ...m, deletedAt: typeof m.deletedAt === "number" && Number.isFinite(m.deletedAt) ? m.deletedAt : 0 }))
+    .map((m) => ({
+      ...m,
+      deletedAt: typeof m.deletedAt === "number" && Number.isFinite(m.deletedAt) ? m.deletedAt : 0,
+      deletedBy: cleanStr(m.deletedBy, 40),
+    }))
     .slice(-TRASH_LIMIT);
 }
 
@@ -105,7 +111,7 @@ export function moveMatchToTrash(data, matchId, now = Date.now()) {
 export function restoreMatchFromTrash(data, matchId) {
   const item = (data.trash || []).find((m) => m.id === matchId);
   if (!item) return data;
-  const { deletedAt, ...match } = item;
+  const { deletedAt, deletedBy, ...match } = item;
   let activeSeries = data.activeSeries;
   if (match.seriesId && activeSeries && activeSeries.id === match.seriesId && match.winnerId) {
     activeSeries = { ...activeSeries, wins: { ...activeSeries.wins, [match.winnerId]: (activeSeries.wins[match.winnerId] || 0) + 1 } };
@@ -132,12 +138,10 @@ const cleanIds = (v, limit) =>
 function sanitizeEvent(e) {
   if (!isObj(e) || typeof e.id !== "string" || !e.id || typeof e.pid !== "string") return null;
   const ts = typeof e.ts === "number" && Number.isFinite(e.ts) ? e.ts : 0;
-  if (typeof e.v === "number" && Number.isFinite(e.v)) {
-    return { id: e.id.slice(0, 64), pid: e.pid.slice(0, 64), ts, v: Math.max(0, Math.min(999, Math.floor(e.v))) };
-  }
-  if (typeof e.d === "number" && Number.isFinite(e.d)) {
-    return { id: e.id.slice(0, 64), pid: e.pid.slice(0, 64), ts, d: Math.max(-999, Math.min(999, Math.round(e.d))) };
-  }
+  const base = { id: e.id.slice(0, 64), pid: e.pid.slice(0, 64), ts };
+  if (typeof e.by === "string" && e.by) base.by = e.by.slice(0, 40);
+  if (typeof e.v === "number" && Number.isFinite(e.v)) return { ...base, v: Math.max(0, Math.min(999, Math.floor(e.v))) };
+  if (typeof e.d === "number" && Number.isFinite(e.d)) return { ...base, d: Math.max(-999, Math.min(999, Math.round(e.d))) };
   return null;
 }
 
@@ -257,16 +261,36 @@ const META_KEYS = ["activeSeries", "activeBracket", "theme", "gameType", "russia
 // record is newer: edited/added players and matches get `modifiedAt`,
 // removed players leave a tombstone, a finished or cancelled game is marked
 // ended, and series/bracket/settings changes bump `metaAt`.
-export function stampChanges(prev, next, now = Date.now()) {
+// `by` (the member's display name, if set) is recorded on matches as
+// createdBy/modifiedBy and on deleted matches as deletedBy, so a club can
+// see who recorded, edited or removed what.
+export function stampChanges(prev, next, now = Date.now(), by = "") {
   if (!prev || !next || prev === next) return next;
   let out = next;
-  const stampList = (key) => {
+  const author = typeof by === "string" ? by.slice(0, 40) : "";
+  const stampList = (key, withAuthor) => {
     if (next[key] === prev[key]) return;
     const before = new Map((prev[key] || []).map((x) => [x.id, x]));
-    out = { ...out, [key]: (next[key] || []).map((x) => (before.get(x.id) === x ? x : { ...x, modifiedAt: now })) };
+    out = {
+      ...out,
+      [key]: (next[key] || []).map((x) => {
+        const old = before.get(x.id);
+        if (old === x) return x;
+        const stamped = { ...x, modifiedAt: now };
+        if (withAuthor && author) {
+          stamped.modifiedBy = author;
+          if (!old && !x.createdBy) stamped.createdBy = author;
+        }
+        return stamped;
+      }),
+    };
   };
-  stampList("players");
-  stampList("matches");
+  stampList("players", false);
+  stampList("matches", true);
+  if (author && next.trash !== prev.trash) {
+    const before = new Set((prev.trash || []).map((m) => m.id));
+    out = { ...out, trash: (out.trash || []).map((m) => (before.has(m.id) || m.deletedBy ? m : { ...m, deletedBy: author })) };
+  }
   if (next.players !== prev.players) {
     const kept = new Set((next.players || []).map((p) => p.id));
     const removed = (prev.players || []).filter((p) => !kept.has(p.id)).map((p) => p.id);

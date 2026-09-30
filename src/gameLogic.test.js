@@ -659,3 +659,24 @@ describe("forgotten game reminder", () => {
     expect(isGameStale(null)).toBe(false);
   });
 });
+
+describe("who changed what", () => {
+  const base = normalizeData({ matches: [{ id: "m0", participants: ["a"], date: "2024-01-01", createdBy: "Антон" }] });
+  it("records the author of new, edited and deleted matches", () => {
+    const added = stampChanges(base, { ...base, matches: [...base.matches, { id: "m1", participants: ["a"], date: "2024-01-02" }] }, 5, "Игорь");
+    expect(added.matches[1]).toMatchObject({ createdBy: "Игорь", modifiedBy: "Игорь" });
+    expect(added.matches[0].modifiedBy).toBe("");
+    const edited = stampChanges(added, { ...added, matches: [{ ...added.matches[0], scores: { a: 5 } }, added.matches[1]] }, 6, "Сергей");
+    expect(edited.matches[0]).toMatchObject({ createdBy: "Антон", modifiedBy: "Сергей" });
+    const deleted = stampChanges(edited, moveMatchToTrash(edited, "m1", 7), 7, "Пётр");
+    expect(deleted.trash[0]).toMatchObject({ id: "m1", deletedBy: "Пётр" });
+    const back = stampChanges(deleted, restoreMatchFromTrash(deleted, "m1"), 8, "Анна");
+    expect(back.matches.find((m) => m.id === "m1").deletedBy).toBeUndefined();
+    const again = stampChanges(back, moveMatchToTrash(back, "m1", 9), 9, "Олег");
+    expect(again.trash[0].deletedBy).toBe("Олег");
+  });
+  it("keeps the author on score events", () => {
+    const g = normalizeData({ activeGame: { id: "g", participants: ["a"], events: [] } }).activeGame;
+    expect(addGameEvent(g, { id: "e", pid: "a", d: 1, ts: 1, by: "Антон" }).events[0].by).toBe("Антон");
+  });
+});

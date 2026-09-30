@@ -27,6 +27,7 @@ export function TrashCard({ trash, nameById, onRestore, styles }) {
                 <div style={styles.historyDate}>
                   партия {fmt(m.date)}
                   {m.deletedAt ? ` · удалена ${fmt(m.deletedAt)}` : ""}
+                  {m.deletedBy ? ` · ${m.deletedBy}` : ""}
                 </div>
               </div>
               <button style={styles.diceBtn} onClick={() => onRestore(m.id)}>
