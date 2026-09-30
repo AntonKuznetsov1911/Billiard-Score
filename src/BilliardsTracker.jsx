@@ -18,6 +18,8 @@ import {
   getClubMembers,
   listClubHistory,
   restoreClubHistory,
+  setMyClubName,
+  getMyClubName,
 } from "./clubSync.js";
 import tableRussianPhoto from "./assets/table-russian.jpg";
 import tablePoolPhoto from "./assets/table-pool.jpg";
@@ -1045,6 +1047,16 @@ export default function BilliardsTracker() {
   const [clubError, setClubError] = useState("");
   const [clubCodeInput, setClubCodeInput] = useState("");
   const [clubNameInput, setClubNameInput] = useState("");
+  const NAME_KEY = "billiards-display-name";
+  const [myName, setMyName] = useState(() => {
+    try {
+      return window.localStorage.getItem(NAME_KEY) || "";
+    } catch (e) {
+      return "";
+    }
+  });
+  const [clubNameSaved, setClubNameSaved] = useState(null); // name stored on the server for the current club
+  const [nameMsg, setNameMsg] = useState("");
 
   useEffect(() => {
     const goOnline = () => setIsOffline(false);
@@ -1946,11 +1958,53 @@ export default function BilliardsTracker() {
     setAuthEmail("");
   };
 
+  const rememberMyName = () => {
+    const n = myName.trim().slice(0, 40);
+    try {
+      window.localStorage.setItem(NAME_KEY, n);
+    } catch (e) {
+      // not critical
+    }
+    return n || (authSession && authSession.user && authSession.user.email ? authSession.user.email.split("@")[0] : "");
+  };
+
+  const saveMyClubName = async () => {
+    if (!club) return;
+    const n = rememberMyName();
+    setNameMsg("");
+    try {
+      await setMyClubName(club.id, n);
+      setClubNameSaved(n);
+      setNameMsg("Сохранено");
+    } catch (e) {
+      setNameMsg(e.message || "Не удалось сохранить имя");
+    }
+  };
+
+  useEffect(() => {
+    if (!club) {
+      setClubNameSaved(null);
+      return;
+    }
+    let alive = true;
+    getMyClubName(club.id)
+      .then((n) => {
+        if (!alive) return;
+        setClubNameSaved(n);
+        if (n && !myName) setMyName(n);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [club]);
+
   const handleCreateClub = async () => {
     setClubBusy(true);
     setClubError("");
     try {
-      const newClub = await createClub(clubNameInput.trim());
+      const newClub = await createClub(clubNameInput.trim(), rememberMyName());
       setClub(newClub);
       setClubNameInput("");
     } catch (e) {
@@ -1965,7 +2019,7 @@ export default function BilliardsTracker() {
     setClubBusy(true);
     setClubError("");
     try {
-      const joined = await joinClub(clubCodeInput.trim());
+      const joined = await joinClub(clubCodeInput.trim(), rememberMyName());
       setClub(joined);
       setClubCodeInput("");
     } catch (e) {
@@ -2213,6 +2267,33 @@ export default function BilliardsTracker() {
     e.target.value = "";
   };
 
+  const gameRunning = !!data.activeGame;
+
+  // Keep the screen on while a match is in progress (the OS releases the lock
+  // whenever the app goes to the background, so it is re-requested on return).
+  useEffect(() => {
+    if (!gameRunning || typeof navigator === "undefined" || !navigator.wakeLock) return;
+    let lock = null;
+    let cancelled = false;
+    const acquire = async () => {
+      if (document.visibilityState !== "visible" || (lock && !lock.released)) return;
+      try {
+        const l = await navigator.wakeLock.request("screen");
+        if (cancelled) l.release().catch(() => {});
+        else lock = l;
+      } catch (e) {
+        // denied (battery saver, unsupported context) — nothing else to do
+      }
+    };
+    acquire();
+    document.addEventListener("visibilitychange", acquire);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", acquire);
+      if (lock) lock.release().catch(() => {});
+    };
+  }, [gameRunning]);
+
   if (!loaded) {
     return (
       <div style={{ minHeight: "100vh", background: COLORS.felt, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -2227,6 +2308,7 @@ export default function BilliardsTracker() {
   const styles = makeStyles(dark);
   const isKolhoz = (data.gameType || "russian") === "russian" && (data.russianMode || "free") === "kolhoz";
   const immersive = !!(activeGame && gameMode);
+
   // Show the "what are we playing?" gate until a discipline is actively
   // picked this session — skip it outright if a match is already underway
   // (returning to an in-progress game shouldn't ask again).
@@ -3406,6 +3488,16 @@ export default function BilliardsTracker() {
                       <p style={styles.hint}>Вы вошли как {authSession.user.email}.</p>
                       {clubError && <p style={{ ...styles.hint, color: COLORS.danger }}>{clubError}</p>}
                       <div style={{ marginTop: "10px" }}>
+                        <p style={styles.hint}>Ваше имя в клубе (видно в истории изменений)</p>
+                        <input
+                          style={{ ...styles.input, width: "100%" }}
+                          placeholder="Например, Антон"
+                          maxLength={40}
+                          value={myName}
+                          onChange={(e) => setMyName(e.target.value)}
+                        />
+                      </div>
+                      <div style={{ marginTop: "10px" }}>
                         <p style={styles.hint}>Создать новый клуб</p>
                         <div style={styles.addRow}>
                           <input
@@ -3445,6 +3537,29 @@ export default function BilliardsTracker() {
                         <div style={{ marginTop: "6px" }}>
                           Код приглашения: <span style={styles.mono}>{club.code}</span>
                         </div>
+                        <div style={{ ...styles.addRow, marginTop: "8px" }}>
+                          <input
+                            style={styles.input}
+                            placeholder="Ваше имя в клубе"
+                            maxLength={40}
+                            value={myName}
+                            onChange={(e) => {
+                              setMyName(e.target.value);
+                              setNameMsg("");
+                            }}
+                          />
+                          <button
+                            style={styles.diceBtn}
+                            onClick={saveMyClubName}
+                            disabled={!myName.trim() || myName.trim() === (clubNameSaved || "")}
+                          >
+                            Сохранить
+                          </button>
+                        </div>
+                        {nameMsg && <p style={{ ...styles.hint, margin: "4px 0 0" }}>{nameMsg}</p>}
+                        {clubNameSaved === "" && !nameMsg && (
+                          <p style={{ ...styles.hint, margin: "4px 0 0" }}>Укажите имя — иначе в истории изменений вы будете «участником …»</p>
+                        )}
                         <p style={{ ...styles.hint, margin: "6px 0 0" }}>
                           Поделитесь кодом с остальными игроками — им нужно один раз войти по email и ввести этот код.
                         </p>

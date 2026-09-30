@@ -200,3 +200,26 @@ export async function restoreClubHistory(historyId) {
     throw error;
   }
 }
+
+export async function setMyClubName(clubId, name) {
+  const client = requireClient();
+  const { error } = await client.rpc("set_my_club_name", { p_club_id: clubId, p_name: name });
+  if (error) {
+    if (error.code === "PGRST202" || /Could not find the function/i.test(error.message || "")) {
+      throw new Error("Нужно обновить базу: выполните supabase/history.sql");
+    }
+    throw error;
+  }
+}
+
+export async function getMyClubName(clubId) {
+  const client = requireClient();
+  const user = await currentUser();
+  const { data } = await client
+    .from("club_members")
+    .select("display_name")
+    .eq("club_id", clubId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  return (data && data.display_name) || "";
+}

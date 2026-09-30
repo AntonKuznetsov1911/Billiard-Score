@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import BilliardsTracker from "./BilliardsTracker.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
+import UpdateBanner from "./UpdateBanner.jsx";
 
 // Адаптер хранилища: внутри Claude есть window.storage; вне его (браузер,
 // Telegram Mini App) используем localStorage с тем же интерфейсом.
@@ -30,5 +31,6 @@ if (typeof window !== "undefined" && !window.storage) {
 createRoot(document.getElementById("root")).render(
   <ErrorBoundary>
     <BilliardsTracker />
+    <UpdateBanner />
   </ErrorBoundary>
 );
