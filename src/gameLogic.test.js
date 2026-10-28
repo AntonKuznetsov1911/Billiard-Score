@@ -885,3 +885,24 @@ describe("kolhoz with a trimmed event log", () => {
     expect(kolhozAllRounds(g)[0].scores).toEqual({ v: 800, s: 800 });
   });
 });
+
+describe("kolhoz log cap is tracked, not guessed", () => {
+  it("a full but untrimmed log still recomputes rounds (late tap counted)", () => {
+    let g = normalizeData({ activeGames: [{ id: "k", participants: ["v", "s"], events: [], kolhoz: { order: ["v", "s"], rounds: [] } }] }).activeGames[0];
+    for (let i = 0; i < 1499; i++) g = addGameEvent(g, { id: `a${i}`, pid: i % 2 ? "s" : "v", d: 1, ts: i });
+    const beforeChange = g;
+    g = startKolhozRound(g, ["s", "v"]);
+    for (let i = 0; i < 1500; i++) g = addGameEvent(g, { id: `b${i}`, pid: "s", d: 1, ts: 5000 + i });
+    const late = addGameEvent(beforeChange, { id: "late", pid: "s", d: 1, ts: 1499 });
+    const m = mergeData({ ...normalizeData({}), activeGames: [g], updatedAt: 2 }, { ...normalizeData({}), activeGames: [late], updatedAt: 1 }).activeGames[0];
+    expect(m.events).toHaveLength(3000);
+    expect(m.trimmedRound).toBeUndefined();
+    expect(kolhozAllRounds(m)[0].scores).toEqual({ v: 750, s: 750 });
+  });
+  it("remembers which round lost events", () => {
+    let g = normalizeData({ activeGames: [{ id: "k", participants: ["v", "s"], events: [], kolhoz: { order: ["v", "s"], rounds: [] } }] }).activeGames[0];
+    for (let i = 0; i < 3001; i++) g = addGameEvent(g, { id: `a${i}`, pid: "v", d: 0, ts: i });
+    expect(g.trimmedRound).toBe(0);
+    expect(normalizeData({ activeGames: [g] }).activeGames[0].trimmedRound).toBe(0);
+  });
+});
