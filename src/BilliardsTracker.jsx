@@ -727,6 +727,7 @@ export default function BilliardsTracker() {
       targets,
       startedAt: new Date().toISOString(),
       startedBy: authorRef.current,
+      trimmedRound: -1,
       stake: participants.length >= 2 ? stake : 0,
       ...(mode === "kolhoz" && participants.length >= 2 ? { kolhoz: { order: [...participants], rounds: [] }, kolhozUnit } : {}),
       ...extra,

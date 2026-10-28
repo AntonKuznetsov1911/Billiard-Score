@@ -254,12 +254,20 @@ function withScores(g) {
 
 // The event log is capped; `trimmedRound` remembers the newest round that
 // actually lost events to the cap (kolhoz then trusts that round's snapshot).
+// -1 means nothing was dropped.
 function capEvents(trimmedRound, events) {
-  const prev = typeof trimmedRound === "number" && trimmedRound >= 0 ? trimmedRound : null;
-  if (events.length <= EVENT_LIMIT) return prev === null ? { events } : { events, trimmedRound: prev };
+  const prev = typeof trimmedRound === "number" && trimmedRound >= 0 ? trimmedRound : -1;
+  if (events.length <= EVENT_LIMIT) return { events, trimmedRound: prev };
   const dropped = events.slice(0, events.length - EVENT_LIMIT);
-  const lost = Math.max(prev ?? -1, ...dropped.map((e) => e.r || 0));
-  return { events: events.slice(-EVENT_LIMIT), trimmedRound: lost };
+  return { events: events.slice(-EVENT_LIMIT), trimmedRound: Math.max(prev, ...dropped.map((e) => e.r || 0)) };
+}
+
+// Games saved before the marker existed don't say whether their full log was
+// trimmed; assume the oldest round in it lost events (its snapshot wins).
+function cleanTrimmedRound(v, events) {
+  const n = cleanInt(v, -1, 1000);
+  if (n !== null) return n;
+  return events.length >= EVENT_LIMIT ? Math.min(...events.map((e) => e.r || 0)) : -1;
 }
 
 export function addGameEvent(g, event) {
@@ -315,7 +323,6 @@ function sanitizeActiveGame(g) {
     events: legacy ? [] : g.events.map(sanitizeEvent).filter(Boolean).slice(-EVENT_LIMIT),
     undone: cleanIds(g.undone, EVENT_LIMIT),
     stake: cleanStake(g.stake),
-    ...(cleanInt(g.trimmedRound, 0, 1000) !== null ? { trimmedRound: g.trimmedRound } : {}),
     gameType: cleanGameType(g.gameType),
     mode: cleanMode(g.mode),
     targets: isObj(g.targets) ? cleanScores(g.targets) : null,
@@ -325,6 +332,7 @@ function sanitizeActiveGame(g) {
     bracketRound: cleanInt(g.bracketRound, 0, 3),
     bracketMatch: cleanInt(g.bracketMatch, 0, 7),
   };
+  out.trimmedRound = cleanTrimmedRound(g.trimmedRound, out.events);
   if (g.kolhozUnit === "balls" || g.kolhozUnit === "points") out.kolhozUnit = g.kolhozUnit;
   if (isObj(kolhoz)) {
     const order = cleanPidList(kolhoz.order).filter((pid) => participants.includes(pid));
@@ -812,7 +820,7 @@ export function kolhozAllRounds(g) {
   const events = g.events || [];
   const logged = new Set(events.map((e) => e.r || 0));
   // Rounds up to the newest one that lost events to the log cap keep their snapshot.
-  const trimmedUpTo = typeof g.trimmedRound === "number" ? g.trimmedRound : -1;
+  const trimmedUpTo = typeof g.trimmedRound === "number" ? g.trimmedRound : cleanTrimmedRound(null, events);
   const done = g.kolhoz.rounds.map((r, i) => ({
     order: r.order,
     scores:
