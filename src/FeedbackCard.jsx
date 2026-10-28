@@ -68,7 +68,7 @@ export function FeedbackCard({ styles }) {
       />
       <input
         style={{ ...styles.input, width: "100%", marginTop: "8px" }}
-        placeholder="Как с вами связаться (необязательно): Telegram, email"
+        placeholder="Как с вами связаться (необязательно)"
         aria-label="Контакт"
         maxLength={100}
         value={contact}
