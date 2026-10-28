@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import BilliardsTracker from "./BilliardsTracker.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import UpdateBanner from "./UpdateBanner.jsx";
+import { pingUsage } from "./analytics.js";
 
 // Адаптер хранилища: внутри Claude есть window.storage; вне его (браузер,
 // Telegram Mini App) используем localStorage с тем же интерфейсом.
@@ -35,3 +36,6 @@ createRoot(document.getElementById("root")).render(
     <UpdateBanner />
   </ErrorBoundary>
 );
+
+// Anonymous daily usage count, after the app has started.
+setTimeout(pingUsage, 3000);
