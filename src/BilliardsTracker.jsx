@@ -152,7 +152,7 @@ export default function BilliardsTracker() {
   const [menuVisible, setMenuVisible] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [openRuleKey, setOpenRuleKey] = useState(null);
-  const [ballValue, setBallValue] = useState(5);
+  const [ballValue, setBallValue] = useState(1);
   const [handicaps, setHandicaps] = useState({});
   const [h2h, setH2h] = useState({ a: "", b: "" });
   const [statsFilter, setStatsFilter] = useState({ period: "all", gameType: "all", mode: "all" });
@@ -702,6 +702,8 @@ export default function BilliardsTracker() {
     breakerId = null,
     extra = {},
   }) => {
+    // Every new game starts with ball value 1; players switch it themselves.
+    setBallValue(1);
     const scores = {};
     participants.forEach((id) => (scores[id] = 0));
     return {
@@ -2477,6 +2479,7 @@ export default function BilliardsTracker() {
                               haptic("light");
                               setBallValue(v);
                             }}
+                            aria-pressed={ballValue === v}
                             style={{
                               ...styles.selectChip,
                               borderRadius: "10px",

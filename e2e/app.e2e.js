@@ -182,6 +182,8 @@ test("kolhoz: rounds with position change, points by ball value", async ({ page 
   await expect(page.getByLabel("Ставка, рублей")).toHaveCount(0);
   await page.getByRole("button", { name: "Начать партию" }).click();
 
+  // the ball value starts at 1 in every new game
+  await expect(page.getByRole("button", { name: "1", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "3", exact: true }).click();
   await page.getByRole("button", { name: "Добавить: Ваня" }).click();
   await page.waitForTimeout(120);
