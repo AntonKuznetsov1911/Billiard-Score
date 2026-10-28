@@ -1722,6 +1722,14 @@ export default function BilliardsTracker() {
       <style>{`
         * { box-sizing: border-box; }
         button { font-family: inherit; cursor: pointer; }
+        /* A long press on a button or on the big-mode screen must not select
+           text: on Android that opens Google "tap to search" over the game. */
+        button, .fs-overlay, .fs-overlay * {
+          -webkit-user-select: none;
+          user-select: none;
+          -webkit-touch-callout: none;
+          -webkit-tap-highlight-color: transparent;
+        }
         button:focus-visible, input:focus-visible { outline: 2px solid ${COLORS.brass}; outline-offset: 2px; }
         input { font-family: inherit; }
         ::selection { background: ${COLORS.brass}; color: ${COLORS.ink}; }
@@ -2316,18 +2324,18 @@ export default function BilliardsTracker() {
                   // 3+ players (kolhoz) share the width — tighter zones, one-line ball picker.
                   const crowded = activeGame.participants.length >= 3;
                   return (
-                    <div style={styles.fsOverlay} className="fs-overlay no-print">
+                    <div style={styles.fsOverlay} className="fs-overlay no-print" onContextMenu={(e) => e.preventDefault()}>
                       <div style={styles.fsTopBar}>
                         <button style={styles.fsTopBtn} onClick={() => setGameMode(false)}>
-                          ▣ Обычный вид
+                          ▣ Обычный
                         </button>
                         {kolhoz && <span style={styles.fsRoundTag}>Круг {roundNo}</span>}
                         {stake > 0 && <span style={styles.fsRoundTag}>💰 {formatRub(stake)}</span>}
                         {club && <SyncBadge status={isOffline ? "offline" : clubSync} dotOnly />}
                         <span style={{ flex: 1 }} />
                         {kolhoz && (
-                          <button style={styles.fsTopBtn} onClick={openKolhozPositions}>
-                            ⇄ Смена позиций
+                          <button style={styles.fsTopBtn} onClick={openKolhozPositions} aria-label="Смена позиций">
+                            ⇄ Позиции
                           </button>
                         )}
                         <button
@@ -2442,7 +2450,7 @@ export default function BilliardsTracker() {
                       </div>
                       <p style={styles.fsHint}>
                         {kolhoz
-                          ? `Тапните по зоне игрока, который забил, — +${step} очк. Круг ${roundNo}: каждый забивает следующему.`
+                          ? `Тапните по зоне игрока, который забил, — +${isPoints ? `${step} очк.` : "1 шар"}. Круг ${roundNo}: каждый забивает следующему.`
                           : `Тапните по своей половине экрана, чтобы добавить ${isPoints ? `${step} очк.` : "шар"}`}
                       </p>
                     </div>
