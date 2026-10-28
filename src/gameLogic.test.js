@@ -845,3 +845,32 @@ describe("club data written by a careless or hostile member can't crash the app"
     expect(out.activeBracket.rounds[0][1].winnerId).toBe("c");
   });
 });
+
+describe("club races found in review", () => {
+  it("a kolhoz tap that arrives after the positions were changed still counts", () => {
+    const start = normalizeData({ activeGames: [{ id: "k", participants: ["v", "s", "a"], events: [], kolhoz: { order: ["v", "s", "a"], rounds: [] } }] }).activeGames[0];
+    const both = addGameEvent(start, { id: "e1", pid: "v", d: 2, ts: 1 });
+    // device A changes positions before B's tap (e2, same round) reaches it
+    const deviceA = { ...normalizeData({}), activeGames: [startKolhozRound(both, ["v", "a", "s"])], updatedAt: 3 };
+    const deviceB = { ...normalizeData({}), activeGames: [addGameEvent(both, { id: "e2", pid: "s", d: 5, ts: 2 })], updatedAt: 2 };
+    const g = mergeData(deviceA, deviceB).activeGames[0];
+    expect(g.kolhoz.rounds).toHaveLength(1);
+    expect(kolhozAllRounds(g)[0].scores).toEqual({ v: 2, s: 5, a: 0 });
+    expect(g.scores).toEqual({ v: 0, s: 0, a: 0 });
+  });
+
+  it("two bracket matches finished on different devices both advance", () => {
+    const bracket = {
+      id: "b",
+      participants: ["a", "b", "c", "d"],
+      rounds: [[{ a: "a", b: "b", winnerId: null }, { a: "c", b: "d", winnerId: null }], [{ a: null, b: null, winnerId: null }]],
+      champion: null,
+    };
+    const base = normalizeData({ activeBracket: bracket });
+    const one = stampChanges(base, { ...base, activeBracket: { ...bracket, rounds: [[{ a: "a", b: "b", winnerId: "a" }, bracket.rounds[0][1]], [{ a: "a", b: null, winnerId: null }]] } }, 5);
+    const two = stampChanges(base, { ...base, activeBracket: { ...bracket, rounds: [[bracket.rounds[0][0], { a: "c", b: "d", winnerId: "d" }], [{ a: null, b: "d", winnerId: null }]] } }, 6);
+    const m = mergeData({ ...one, updatedAt: 5 }, { ...two, updatedAt: 6 });
+    expect(m.activeBracket.rounds[0].map((x) => x.winnerId)).toEqual(["a", "d"]);
+    expect(m.activeBracket.rounds[1][0]).toMatchObject({ a: "a", b: "d" });
+  });
+});
