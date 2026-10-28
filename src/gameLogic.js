@@ -252,10 +252,28 @@ function withScores(g) {
   return { ...g, scores: computeGameScores(g) };
 }
 
+// The event log is capped; `trimmedRound` remembers the newest round that
+// actually lost events to the cap (kolhoz then trusts that round's snapshot).
+// -1 means nothing was dropped.
+function capEvents(trimmedRound, events) {
+  const prev = typeof trimmedRound === "number" && trimmedRound >= 0 ? trimmedRound : -1;
+  if (events.length <= EVENT_LIMIT) return { events, trimmedRound: prev };
+  const dropped = events.slice(0, events.length - EVENT_LIMIT);
+  return { events: events.slice(-EVENT_LIMIT), trimmedRound: Math.max(prev, ...dropped.map((e) => e.r || 0)) };
+}
+
+// Games saved before the marker existed don't say whether their full log was
+// trimmed; assume the oldest round in it lost events (its snapshot wins).
+function cleanTrimmedRound(v, events) {
+  const n = cleanInt(v, -1, 1000);
+  if (n !== null) return n;
+  return events.length >= EVENT_LIMIT ? Math.min(...events.map((e) => e.r || 0)) : -1;
+}
+
 export function addGameEvent(g, event) {
   const e = sanitizeEvent(g && currentRound(g) ? { ...event, r: currentRound(g) } : event);
   if (!g || !e) return g;
-  return withScores({ ...g, events: [...(g.events || []), e].slice(-EVENT_LIMIT) });
+  return withScores({ ...g, ...capEvents(g.trimmedRound, [...(g.events || []), e]) });
 }
 
 function lastUndoableEvent(g) {
@@ -314,6 +332,7 @@ function sanitizeActiveGame(g) {
     bracketRound: cleanInt(g.bracketRound, 0, 3),
     bracketMatch: cleanInt(g.bracketMatch, 0, 7),
   };
+  out.trimmedRound = cleanTrimmedRound(g.trimmedRound, out.events);
   if (g.kolhozUnit === "balls" || g.kolhozUnit === "points") out.kolhozUnit = g.kolhozUnit;
   if (isObj(kolhoz)) {
     const order = cleanPidList(kolhoz.order).filter((pid) => participants.includes(pid));
@@ -424,7 +443,7 @@ function mergeActiveGames(x, y) {
   const merged = {
     ...y,
     baseScores: { ...(x.baseScores || {}), ...(y.baseScores || {}) },
-    events: [...events.values()].sort(eventOrder).slice(-EVENT_LIMIT),
+    ...capEvents(Math.max(x.trimmedRound ?? -1, y.trimmedRound ?? -1), [...events.values()].sort(eventOrder)),
     undone: unionIds(x.undone, y.undone, EVENT_LIMIT),
   };
   // Rounds are only ever appended, so the copy that has played further is newer.
@@ -800,9 +819,8 @@ export function kolhozAllRounds(g) {
   if (!g || !g.kolhoz) return [];
   const events = g.events || [];
   const logged = new Set(events.map((e) => e.r || 0));
-  // Once the log hit its cap, the oldest round still in it may have lost its
-  // first events — that round (and older ones) keep their snapshot.
-  const trimmedUpTo = events.length >= EVENT_LIMIT ? Math.min(...events.map((e) => e.r || 0)) : -1;
+  // Rounds up to the newest one that lost events to the log cap keep their snapshot.
+  const trimmedUpTo = typeof g.trimmedRound === "number" ? g.trimmedRound : cleanTrimmedRound(null, events);
   const done = g.kolhoz.rounds.map((r, i) => ({
     order: r.order,
     scores:
