@@ -874,3 +874,14 @@ describe("club races found in review", () => {
     expect(m.activeBracket.rounds[1][0]).toMatchObject({ a: "a", b: "d" });
   });
 });
+
+describe("kolhoz with a trimmed event log", () => {
+  it("keeps the snapshot of a round whose first events were cut off", () => {
+    let g = normalizeData({ activeGames: [{ id: "k", participants: ["v", "s"], events: [], kolhoz: { order: ["v", "s"], rounds: [] } }] }).activeGames[0];
+    for (let i = 0; i < 1600; i++) g = addGameEvent(g, { id: `a${i}`, pid: i % 2 ? "s" : "v", d: 1, ts: i });
+    g = startKolhozRound(g, ["s", "v"]); // round 1 frozen at 800 : 800
+    for (let i = 0; i < 1500; i++) g = addGameEvent(g, { id: `b${i}`, pid: "s", d: 1, ts: 5000 + i });
+    expect(g.events).toHaveLength(3000); // the 100 oldest first-round taps are gone
+    expect(kolhozAllRounds(g)[0].scores).toEqual({ v: 800, s: 800 });
+  });
+});
