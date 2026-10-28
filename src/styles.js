@@ -319,9 +319,21 @@ export function makeStyles(dark) {
       paddingTop: "env(safe-area-inset-top)",
       paddingBottom: "env(safe-area-inset-bottom)",
     },
-    fsTopBar: { display: "flex", alignItems: "center", gap: "8px", padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.12)" },
+    // One line that never pushes "Завершить" off a phone screen (scrolls if it must).
+    fsTopBar: {
+      display: "flex",
+      alignItems: "center",
+      gap: "6px",
+      padding: "8px 10px",
+      borderBottom: "1px solid rgba(255,255,255,0.12)",
+      flexWrap: "nowrap",
+      overflowX: "auto",
+      scrollbarWidth: "none",
+    },
     fsTopBtn: {
-      padding: "8px 12px",
+      flexShrink: 0,
+      whiteSpace: "nowrap",
+      padding: "7px 10px",
       borderRadius: "8px",
       border: "1px solid rgba(255,255,255,0.28)",
       background: "rgba(0,0,0,0.2)",
@@ -330,6 +342,7 @@ export function makeStyles(dark) {
       fontWeight: 700,
     },
     fsRoundTag: {
+      flexShrink: 0,
       padding: "5px 10px",
       borderRadius: "999px",
       background: "rgba(192,138,62,0.22)",
@@ -340,6 +353,8 @@ export function makeStyles(dark) {
       whiteSpace: "nowrap",
     },
     fsFinishBtn: {
+      flexShrink: 0,
+      whiteSpace: "nowrap",
       padding: "8px 14px",
       borderRadius: "8px",
       border: `1px solid ${COLORS.brass}`,

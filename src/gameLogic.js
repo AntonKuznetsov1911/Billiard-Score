@@ -110,7 +110,8 @@ export function sanitizeMatches(list) {
         !Number.isNaN(new Date(m.date).getTime())
     )
     .slice(0, 20000)
-    .map((m) => ({
+    // stake/kolhozUnit/payments: left by the removed "for money" feature.
+    .map(({ stake, kolhozUnit, payments, ...m }) => ({
       ...m,
       id: typeof m.id === "string" ? m.id.slice(0, 64) : uid(),
       participants: m.participants.slice(0, 20),
@@ -126,8 +127,6 @@ export function sanitizeMatches(list) {
       createdBy: cleanStr(m.createdBy, 40),
       modifiedBy: cleanStr(m.modifiedBy, 40),
       settlement: cleanSettlement(m.settlement),
-      stake: cleanStake(m.stake),
-      ...(m.kolhozUnit === "balls" || m.kolhozUnit === "points" ? { kolhozUnit: m.kolhozUnit } : {}),
       ...(m.kolhozRounds ? { kolhozRounds: cleanKolhozRounds(m.kolhozRounds) } : {}),
       ...(isObj(m.kolhozNet) ? { kolhozNet: Object.fromEntries(Object.keys(m.kolhozNet).slice(0, 20).map((k) => [k, cleanSigned(m.kolhozNet[k])])) } : {}),
     }));
@@ -311,7 +310,7 @@ function sanitizeActiveGame(g) {
   if (!isObj(g) || !Array.isArray(g.participants) || !g.participants.length || !g.participants.every((x) => typeof x === "string")) {
     return null;
   }
-  const { actionLog, kolhoz, ...rest } = g;
+  const { actionLog, kolhoz, stake, kolhozUnit, ...rest } = g;
   const legacy = !Array.isArray(g.events);
   const participants = g.participants.slice(0, 20).map((x) => x.slice(0, 64));
   const out = {
@@ -322,7 +321,6 @@ function sanitizeActiveGame(g) {
     baseScores: cleanScores(legacy ? g.scores : g.baseScores),
     events: legacy ? [] : g.events.map(sanitizeEvent).filter(Boolean).slice(-EVENT_LIMIT),
     undone: cleanIds(g.undone, EVENT_LIMIT),
-    stake: cleanStake(g.stake),
     gameType: cleanGameType(g.gameType),
     mode: cleanMode(g.mode),
     targets: isObj(g.targets) ? cleanScores(g.targets) : null,
@@ -333,7 +331,6 @@ function sanitizeActiveGame(g) {
     bracketMatch: cleanInt(g.bracketMatch, 0, 7),
   };
   out.trimmedRound = cleanTrimmedRound(g.trimmedRound, out.events);
-  if (g.kolhozUnit === "balls" || g.kolhozUnit === "points") out.kolhozUnit = g.kolhozUnit;
   if (isObj(kolhoz)) {
     const order = cleanPidList(kolhoz.order).filter((pid) => participants.includes(pid));
     out.kolhoz = {
@@ -870,56 +867,6 @@ export function gameStandings(g) {
   if (!g) return {};
   if (!g.kolhoz) return g.scores || {};
   return kolhozNet(kolhozSettlement(g.participants, kolhozAllRounds(g)));
-}
-
-// ---------------------------------------------------------------------------
-// Playing for money. Kolhoz: `stake` per point (or per ball, when balls are
-// counted one each) between every pair; other games: each loser pays the
-// winner `stake` for the game. Amounts are whole rubles.
-// ---------------------------------------------------------------------------
-
-export const MAX_STAKE = 1000000;
-export const cleanStake = (v) => {
-  const n = Math.floor(Number(v));
-  return Number.isFinite(n) && n > 0 ? Math.min(MAX_STAKE, n) : 0;
-};
-
-// [{ from, to, amount }] — who pays whom, one line per pair.
-export function buildPayments(m) {
-  const stake = cleanStake(m && m.stake);
-  if (!stake || !m || m.solo) return [];
-  const out = [];
-  if (m.settlement && m.mode === "kolhoz") {
-    const ids = m.participants;
-    ids.forEach((a, i) =>
-      ids.slice(i + 1).forEach((b) => {
-        const diff = (m.settlement[a] && m.settlement[a][b]) || 0;
-        if (diff > 0) out.push({ from: b, to: a, amount: diff * stake });
-        if (diff < 0) out.push({ from: a, to: b, amount: -diff * stake });
-      })
-    );
-    return out;
-  }
-  if (!m.winnerId) return [];
-  m.participants.filter((p) => p !== m.winnerId).forEach((p) => out.push({ from: p, to: m.winnerId, amount: stake }));
-  return out;
-}
-
-// Net money per player over a set of matches (+ won, − lost).
-export function moneyBalance(matches) {
-  const bal = {};
-  (matches || []).forEach((m) =>
-    buildPayments(m).forEach(({ from, to, amount }) => {
-      bal[from] = (bal[from] || 0) - amount;
-      bal[to] = (bal[to] || 0) + amount;
-    })
-  );
-  return bal;
-}
-
-export function formatRub(n) {
-  const v = Math.round(n || 0);
-  return `${v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("ru-RU")} ₽`;
 }
 
 // Players already at another table can't be put into a second game.
