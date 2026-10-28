@@ -22,7 +22,8 @@ export function saveSafetyCopy(storage, data, reason, now = Date.now()) {
     reason,
     matches: data.matches.length,
     players: data.players.length,
-    data: { ...data, activeGame: null },
+    // running games aren't part of a copy (restoring it must not bring them back)
+    data: { ...data, activeGame: null, activeGames: [] },
   };
   let list = [copy, ...listSafetyCopies(storage)].slice(0, MAX_COPIES);
   // localStorage has a small quota: drop the oldest copies until it fits.
@@ -35,6 +36,14 @@ export function saveSafetyCopy(storage, data, reason, now = Date.now()) {
     }
   }
   return false;
+}
+
+export function deleteSafetyCopy(storage, ts) {
+  const list = listSafetyCopies(storage);
+  const next = list.filter((c) => c.ts !== ts);
+  if (next.length === list.length) return false;
+  storage.setItem(SAFETY_KEY, JSON.stringify(next));
+  return true;
 }
 
 // At most one automatic copy per day, and only when the data changed since the last one.

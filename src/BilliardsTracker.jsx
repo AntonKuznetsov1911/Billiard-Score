@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from "react";
-import { saveToCloud, loadFromCloud, cloudSyncAvailable, clearCloud } from "./cloudSync.js";
+import { saveToCloud, loadFromCloud, clearCloud } from "./cloudSync.js";
 import { isCloudConfigured } from "./supabaseClient.js";
 import {
   sendMagicLink,
@@ -87,7 +87,7 @@ import { ScoreWheel } from "./ui/ScoreWheel.jsx";
 import { KolhozTable, KolhozChain } from "./ui/KolhozTable.jsx";
 import { Confetti, DisciplineGate, TableArt } from "./ui/Scenery.jsx";
 import { SyncBadge } from "./ui/SyncBadge.jsx";
-import { listSafetyCopies, saveSafetyCopy, maybeAutoSafetyCopy } from "./safety.js";
+import { listSafetyCopies, saveSafetyCopy, maybeAutoSafetyCopy, deleteSafetyCopy } from "./safety.js";
 import { TrashCard, SafetyCopies, ClubHistoryModal } from "./HistoryUI.jsx";
 import Onboarding from "./Onboarding.jsx";
 import {
@@ -613,6 +613,17 @@ export default function BilliardsTracker() {
       setSafetyCopies(listSafetyCopies(window.localStorage));
     } catch (e) {
       // storage unavailable — not critical
+    }
+  };
+
+  const removeSafetyCopy = (copy) => {
+    if (!window.confirm(`Удалить резервную копию от ${new Date(copy.ts).toLocaleString("ru-RU")}? Вернуть её будет нельзя.`)) return;
+    try {
+      deleteSafetyCopy(window.localStorage, copy.ts);
+      setSafetyCopies(listSafetyCopies(window.localStorage));
+      haptic("light");
+    } catch (e) {
+      // storage unavailable
     }
   };
 
@@ -3147,9 +3158,9 @@ export default function BilliardsTracker() {
                 <h2 style={styles.h2}>Резервная копия</h2>
                 <p style={styles.hint}>Все партии сохраняются автоматически. Дополнительно можно скачать полную копию данных или восстановить её из файла.</p>
                 <p style={styles.hint}>
-                  {cloudSyncAvailable()
-                    ? "☁️ Синхронизация с Telegram Cloud включена — данные не потеряются при смене устройства."
-                    : "☁️ Синхронизация с Telegram Cloud недоступна вне Telegram — данные хранятся только на этом устройстве."}
+                  {club
+                    ? "☁️ Вы в клубе — партии хранятся ещё и на сервере клуба, поэтому не потеряются при смене телефона."
+                    : "💾 Данные хранятся только на этом устройстве. Скачайте копию или вступите в клуб, чтобы не потерять их при смене телефона."}
                 </p>
                 <div style={styles.settingBtnRow}>
                   <button style={styles.brassBtn} onClick={exportBackup}>
@@ -3160,11 +3171,11 @@ export default function BilliardsTracker() {
                     <input type="file" accept="application/json" onChange={importBackup} style={{ display: "none" }} />
                   </label>
                 </div>
-                <SafetyCopies copies={safetyCopies} onRestore={restoreSafetyCopy} styles={styles} />
+                <SafetyCopies copies={safetyCopies} onRestore={restoreSafetyCopy} onDelete={removeSafetyCopy} styles={styles} />
               </div>
 
               <div style={styles.card}>
-                <h2 style={{ ...styles.h2, color: COLORS.danger }}>Опасная зона</h2>
+                <h2 style={{ ...styles.h2, color: COLORS.danger }}>Удаление данных</h2>
                 <button style={styles.resetBtn} onClick={clearAll}>
                   Очистить все данные
                 </button>

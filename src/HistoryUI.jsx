@@ -41,11 +41,11 @@ export function TrashCard({ trash, nameById, onRestore, styles }) {
   );
 }
 
-export function SafetyCopies({ copies, onRestore, styles }) {
+export function SafetyCopies({ copies, onRestore, onDelete, styles }) {
   const reasonText = { auto: "автоматическая", "clear-all": "перед очисткой", "import-backup": "перед загрузкой копии", "before-restore": "перед восстановлением" };
   return (
     <div style={{ marginTop: "12px" }}>
-      <p style={styles.hint}>Копии на этом устройстве (до 5, делаются автоматически и перед опасными действиями):</p>
+      <p style={styles.hint}>Копии на этом устройстве (до 5): делаются раз в день и перед очисткой или восстановлением данных.</p>
       {copies.length === 0 ? (
         <p style={styles.emptyText}>Пока нет копий.</p>
       ) : (
@@ -58,9 +58,14 @@ export function SafetyCopies({ copies, onRestore, styles }) {
                 </div>
                 <div style={styles.historyDate}>{reasonText[c.reason] || c.reason}</div>
               </div>
-              <button style={styles.diceBtn} onClick={() => onRestore(c)}>
-                Вернуть
-              </button>
+              <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>
+                <button style={styles.diceBtn} onClick={() => onRestore(c)}>
+                  Вернуть
+                </button>
+                <button style={{ ...styles.cancelBtn, flex: "none", padding: "8px 12px" }} onClick={() => onDelete(c)} aria-label={`Удалить копию от ${fmt(c.ts)}`}>
+                  Удалить
+                </button>
+              </div>
             </li>
           ))}
         </ul>

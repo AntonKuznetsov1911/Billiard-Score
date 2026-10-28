@@ -3,6 +3,9 @@ import { canPromptInstall, promptInstall, onInstallChange, isInstalled, deviceKi
 import { isNativeApp } from "./native.js";
 import { COLORS } from "./constants.js";
 
+// The public address: inside the APK the page itself lives at https://localhost.
+export const APP_URL = "https://antonkuznetsov1911.github.io/Billiard-Score/";
+
 const STEPS = {
   ios: ["Откройте этот сайт в Safari.", "Нажмите «Поделиться» (квадрат со стрелкой вверх) внизу экрана.", "Выберите «На экран „Домой“» → «Добавить»."],
   android: ["Нажмите ⋮ (меню) в правом верхнем углу Chrome.", "Выберите «Установить приложение» или «Добавить на главный экран».", "Подтвердите — иконка «Бильярд» появится на телефоне."],
@@ -26,9 +29,8 @@ export function InstallCard({ styles }) {
     []
   );
 
-  if (isNativeApp() || installed) return null;
-
-  const link = window.location.origin + window.location.pathname;
+  const inApp = isNativeApp() || installed;
+  const link = APP_URL;
 
   const install = async () => {
     const ok = await promptInstall();
@@ -53,6 +55,25 @@ export function InstallCard({ styles }) {
     }
   };
 
+  const shareButton = (
+    <button style={{ ...(inApp ? styles.brassBtn : styles.diceBtn), width: "100%", marginTop: "10px" }} onClick={share}>
+      📤 Поделиться ссылкой с друзьями
+    </button>
+  );
+  const message = msg && <p style={{ ...styles.hint, color: COLORS.brass, wordBreak: "break-all" }}>{msg}</p>;
+
+  // Already installed: nothing to install, but friends can still be invited.
+  if (inApp) {
+    return (
+      <div style={styles.card}>
+        <h2 style={styles.h2}>📤 Пригласить друзей</h2>
+        <p style={styles.hint}>Отправьте ссылку — друзья откроют приложение на телефоне и установят его себе.</p>
+        {shareButton}
+        {message}
+      </div>
+    );
+  }
+
   return (
     <div style={styles.card}>
       <h2 style={styles.h2}>📲 Установить на телефон</h2>
@@ -73,10 +94,8 @@ export function InstallCard({ styles }) {
           ))}
         </ol>
       )}
-      <button style={{ ...styles.diceBtn, width: "100%", marginTop: "10px" }} onClick={share}>
-        📤 Поделиться ссылкой с друзьями
-      </button>
-      {msg && <p style={{ ...styles.hint, color: COLORS.brass, wordBreak: "break-all" }}>{msg}</p>}
+      {shareButton}
+      {message}
     </div>
   );
 }
