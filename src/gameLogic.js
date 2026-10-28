@@ -232,16 +232,20 @@ export function currentRound(g) {
 }
 const inCurrentRound = (g, e) => (e.r || 0) === currentRound(g);
 
-export function computeGameScores(g) {
+// Score of one round from the event log (round 0 starts from baseScores).
+function roundScores(g, round) {
   const scores = {};
-  const fresh = currentRound(g) > 0;
-  g.participants.forEach((pid) => (scores[pid] = (!fresh && g.baseScores && g.baseScores[pid]) || 0));
+  g.participants.forEach((pid) => (scores[pid] = (round === 0 && g.baseScores && g.baseScores[pid]) || 0));
   const undone = new Set(g.undone || []);
   [...(g.events || [])].sort(eventOrder).forEach((e) => {
-    if (undone.has(e.id) || !(e.pid in scores) || !inCurrentRound(g, e)) return;
+    if (undone.has(e.id) || !(e.pid in scores) || (e.r || 0) !== round) return;
     scores[e.pid] = "v" in e ? e.v : Math.max(0, Math.min(999, scores[e.pid] + e.d));
   });
   return scores;
+}
+
+export function computeGameScores(g) {
+  return roundScores(g, currentRound(g));
 }
 
 function withScores(g) {
@@ -432,6 +436,16 @@ function mergeActiveGames(x, y) {
   return withScores(merged);
 }
 
+function mergeBrackets(x, y) {
+  const rounds = x.rounds.map((round, ri) =>
+    round.map((m, mi) => {
+      const o = (y.rounds[ri] && y.rounds[ri][mi]) || {};
+      return { ...m, a: m.a || o.a || null, b: m.b || o.b || null, winnerId: m.winnerId || o.winnerId || null };
+    })
+  );
+  return { ...x, rounds, champion: x.champion || y.champion || null };
+}
+
 function mergeGameLists(newer, older, ended) {
   const out = new Map();
   [...(older || []), ...(newer || [])].forEach((g) => {
@@ -491,6 +505,11 @@ export function mergeData(a, b) {
   const metaSource = cleanStamp(older.metaAt) > cleanStamp(newer.metaAt) ? older : newer;
   const meta = {};
   META_KEYS.forEach((k) => (meta[k] = metaSource[k]));
+  // Two bracket matches finished on different devices: keep both results.
+  const otherBracket = (metaSource === older ? newer : older).activeBracket;
+  if (meta.activeBracket && otherBracket && otherBracket.id === meta.activeBracket.id) {
+    meta.activeBracket = mergeBrackets(meta.activeBracket, otherBracket);
+  }
 
   return {
     ...newer,
@@ -773,11 +792,20 @@ export function setKolhozOrder(g, newOrder) {
 }
 
 // Finished rounds plus the current one (if anything was scored in it).
+// A finished round's score is re-derived from the event log, so a tap that
+// another device made in that round but that arrived only after positions
+// were changed here still counts. The snapshot is the fallback for rounds
+// whose events have been trimmed from the log.
 export function kolhozAllRounds(g) {
   if (!g || !g.kolhoz) return [];
+  const logged = new Set((g.events || []).map((e) => e.r || 0));
+  const done = g.kolhoz.rounds.map((r, i) => ({
+    order: r.order,
+    scores: logged.has(i) || (i === 0 && Object.keys(g.baseScores || {}).length) ? roundScores(g, i) : r.scores,
+  }));
   const live = { order: g.kolhoz.order, scores: { ...g.scores } };
   const hasLive = Object.values(live.scores).some((v) => v > 0);
-  return [...g.kolhoz.rounds, ...(hasLive ? [live] : [])];
+  return [...done, ...(hasLive ? [live] : [])];
 }
 
 // settlement[a][b] > 0 — b owes a that many points.

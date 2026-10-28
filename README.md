@@ -51,7 +51,7 @@ npm run build
 
 ## Публикация как Telegram Mini App (сейчас отключено)
 
-Скрипт Telegram не подключён. Чтобы вернуть Mini App, добавьте в `index.html` строку `<script src="https://telegram.org/js/telegram-web-app.js"></script>` — код для Telegram (вибро, кнопка «Назад», CloudStorage) уже в приложении и включится сам.
+Скрипт Telegram не подключён. Чтобы вернуть Mini App, добавьте в `index.html` строку `<script src="https://telegram.org/js/telegram-web-app.js"></script>` и разрешите этот адрес в политике безопасности в `vite.config.js` (`"script-src 'self' https://telegram.org"`) — код для Telegram (вибро, кнопка «Назад», CloudStorage) уже в приложении и включится сам.
 
 1. Соберите проект и разместите `dist/` на HTTPS-хостинге.
 2. В [@BotFather](https://t.me/BotFather): `/newapp` → выберите своего бота → укажите URL приложения.
