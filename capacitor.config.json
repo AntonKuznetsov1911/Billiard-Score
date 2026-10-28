@@ -1,0 +1,12 @@
+{
+  "appId": "io.github.antonkuznetsov1911.billiard",
+  "appName": "Твой бильярд",
+  "webDir": "dist",
+  "backgroundColor": "#0A2B20",
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "always"
+  }
+}
