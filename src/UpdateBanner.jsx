@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { registerSW } from "virtual:pwa-register";
+import { isNativeApp } from "./native.js";
 
 // Shows "new version available" instead of silently waiting for the app to be
 // closed and reopened. Checks for updates on start, every 30 minutes and
@@ -9,6 +10,8 @@ export default function UpdateBanner() {
   const updateRef = useRef(null);
 
   useEffect(() => {
+    // The Android/iOS app is updated through the store, not a service worker.
+    if (isNativeApp()) return undefined;
     let timer = null;
     let reg = null;
     const check = () => {

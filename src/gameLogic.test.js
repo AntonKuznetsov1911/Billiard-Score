@@ -27,6 +27,21 @@ import {
   buildBracketRounds,
   bracketRoundLabel,
   buildKolhozSettlement,
+  busyPlayerIds,
+  kolhozVictim,
+  kolhozSuggestOrder,
+  kolhozSwap,
+  startKolhozRound,
+  setKolhozOrder,
+  kolhozAllRounds,
+  kolhozSettlement,
+  kolhozNet,
+  kolhozGross,
+  gameStandings,
+  buildPayments,
+  moneyBalance,
+  cleanStake,
+  formatRub,
 } from "./gameLogic.js";
 
 describe("uid", () => {
@@ -44,7 +59,7 @@ describe("loadInitial", () => {
     const initial = loadInitial();
     expect(initial.players).toEqual([]);
     expect(initial.matches).toEqual([]);
-    expect(initial.activeGame).toBeNull();
+    expect(initial.activeGames).toEqual([]);
     expect(initial.theme).toBe("light");
     expect(initial.gameType).toBe("russian");
     expect(initial.russianMode).toBe("free");
@@ -472,7 +487,7 @@ describe("normalizeData treats input as untrusted", () => {
       const out = normalizeData(bad);
       expect(out.players).toEqual([]);
       expect(out.matches).toEqual([]);
-      expect(out.activeGame).toBeNull();
+      expect(out.activeGames).toEqual([]);
     });
   });
   it("drops structurally broken players and matches, keeps good ones", () => {
@@ -499,8 +514,8 @@ describe("normalizeData treats input as untrusted", () => {
     expect(typeof out.matches[0].id).toBe("string");
   });
   it("rejects an activeGame without a participants array", () => {
-    expect(normalizeData({ activeGame: { participants: "a", scores: {} } }).activeGame).toBeNull();
-    const g = normalizeData({ activeGame: { participants: ["a"], scores: { a: 2 }, actionLog: [1, { pid: "a", prev: 1 }] } }).activeGame;
+    expect(normalizeData({ activeGame: { participants: "a", scores: {} } }).activeGames).toEqual([]);
+    const g = normalizeData({ activeGame: { participants: ["a"], scores: { a: 2 }, actionLog: [1, { pid: "a", prev: 1 }] } }).activeGames[0];
     // A game saved before the event log existed keeps its score as the base.
     expect(g.scores).toEqual({ a: 2 });
     expect(g.baseScores).toEqual({ a: 2 });
@@ -551,30 +566,30 @@ describe("match trash", () => {
 describe("concurrent club edits", () => {
   const game = (extra = {}) =>
     normalizeData({ activeGame: { id: "g1", participants: ["a", "b"], scores: {}, events: [], startedAt: "2024-01-01T10:00:00Z", ...extra } })
-      .activeGame;
+      .activeGames[0];
   const tap = (g, id, pid, d, ts) => addGameEvent(g, { id, pid, d, ts });
   const state = (over = {}) => normalizeData({ players: [{ id: "a", name: "A" }, { id: "b", name: "B" }], ...over });
 
   it("keeps both devices' taps on the same game", () => {
     const base = game();
-    const d1 = { ...state(), activeGame: tap(tap(base, "e1", "a", 1, 1), "e2", "a", 1, 3), updatedAt: 3 };
-    const d2 = { ...state(), activeGame: tap(base, "e3", "b", 1, 2), updatedAt: 2 };
+    const d1 = { ...state(), activeGames: [tap(tap(base, "e1", "a", 1, 1), "e2", "a", 1, 3)], updatedAt: 3 };
+    const d2 = { ...state(), activeGames: [tap(base, "e3", "b", 1, 2)], updatedAt: 2 };
     const m = mergeData(d1, d2);
-    expect(m.activeGame.scores).toEqual({ a: 2, b: 1 });
-    expect(mergeData(d2, d1).activeGame.scores).toEqual({ a: 2, b: 1 });
+    expect(m.activeGames[0].scores).toEqual({ a: 2, b: 1 });
+    expect(mergeData(d2, d1).activeGames[0].scores).toEqual({ a: 2, b: 1 });
     // an old echo of our own earlier state changes nothing
-    expect(mergeData(m, d1).activeGame.scores).toEqual({ a: 2, b: 1 });
-    expect(mergeData(m, m).activeGame.events).toHaveLength(3);
+    expect(mergeData(m, d1).activeGames[0].scores).toEqual({ a: 2, b: 1 });
+    expect(mergeData(m, m).activeGames[0].events).toHaveLength(3);
   });
 
   it("undo marks an event undone and survives merging", () => {
     let g = tap(tap(game(), "e1", "a", 1, 1), "e2", "b", 1, 2);
-    const other = { ...state(), activeGame: g, updatedAt: 2 };
+    const other = { ...state(), activeGames: [g], updatedAt: 2 };
     expect(canUndoGame(g)).toBe(true);
     g = undoGameEvent(g);
     expect(g.scores).toEqual({ a: 1, b: 0 });
-    const mine = { ...state(), activeGame: g, updatedAt: 5 };
-    expect(mergeData(other, mine).activeGame.scores).toEqual({ a: 1, b: 0 });
+    const mine = { ...state(), activeGames: [g], updatedAt: 5 };
+    expect(mergeData(other, mine).activeGames[0].scores).toEqual({ a: 1, b: 0 });
     expect(canUndoGame(undoGameEvent(g))).toBe(false);
   });
 
@@ -588,12 +603,12 @@ describe("concurrent club edits", () => {
 
   it("a finished or cancelled game is not resurrected by another device", () => {
     const g = tap(game(), "e1", "a", 1, 1);
-    const prev = { ...state(), activeGame: g, updatedAt: 1 };
-    const finished = stampChanges(prev, { ...prev, activeGame: null, matches: [{ id: "m1", participants: ["a", "b"], date: "2024-01-01" }] }, 10);
+    const prev = { ...state(), activeGames: [g], updatedAt: 1 };
+    const finished = stampChanges(prev, { ...prev, activeGames: [], matches: [{ id: "m1", participants: ["a", "b"], date: "2024-01-01" }] }, 10);
     expect(finished.endedGames).toEqual(["g1"]);
-    const late = { ...prev, activeGame: tap(g, "e2", "b", 1, 11), updatedAt: 11 };
+    const late = { ...prev, activeGames: [tap(g, "e2", "b", 1, 11)], updatedAt: 11 };
     const m = mergeData({ ...finished, updatedAt: 10 }, late);
-    expect(m.activeGame).toBeNull();
+    expect(m.activeGames).toEqual([]);
     expect(m.matches.map((x) => x.id)).toEqual(["m1"]);
   });
 
@@ -676,7 +691,157 @@ describe("who changed what", () => {
     expect(again.trash[0].deletedBy).toBe("Олег");
   });
   it("keeps the author on score events", () => {
-    const g = normalizeData({ activeGame: { id: "g", participants: ["a"], events: [] } }).activeGame;
+    const g = normalizeData({ activeGame: { id: "g", participants: ["a"], events: [] } }).activeGames[0];
     expect(addGameEvent(g, { id: "e", pid: "a", d: 1, ts: 1, by: "Антон" }).events[0].by).toBe("Антон");
+  });
+});
+
+describe("parallel games", () => {
+  const players = [{ id: "a", name: "A" }, { id: "b", name: "B" }, { id: "c", name: "C" }, { id: "d", name: "D" }];
+  const g = (id, participants, startedAt) => normalizeData({ activeGames: [{ id, participants, events: [], startedAt }] }).activeGames[0];
+  const tap = (game, id, pid, ts) => addGameEvent(game, { id, pid, d: 1, ts });
+
+  it("keeps two games started on different devices", () => {
+    const one = { ...normalizeData({ players }), activeGames: [g("g1", ["a", "b"], "2024-01-01T10:00:00Z")], updatedAt: 1 };
+    const two = { ...normalizeData({ players }), activeGames: [g("g2", ["c", "d"], "2024-01-01T10:05:00Z")], updatedAt: 2 };
+    const m = mergeData(one, two);
+    expect(m.activeGames.map((x) => x.id)).toEqual(["g1", "g2"]);
+    expect(mergeData(two, one).activeGames.map((x) => x.id)).toEqual(["g1", "g2"]);
+  });
+
+  it("finishing one game leaves the other running everywhere", () => {
+    const both = { ...normalizeData({ players }), activeGames: [g("g1", ["a", "b"], "1"), g("g2", ["c", "d"], "2")], updatedAt: 1 };
+    const done = stampChanges(both, { ...both, activeGames: both.activeGames.filter((x) => x.id !== "g1") }, 5);
+    expect(done.endedGames).toEqual(["g1"]);
+    const otherDevice = { ...both, activeGames: [tap(both.activeGames[0], "e1", "a", 6), tap(both.activeGames[1], "e2", "c", 6)], updatedAt: 6 };
+    const m = mergeData({ ...done, updatedAt: 5 }, otherDevice);
+    expect(m.activeGames.map((x) => x.id)).toEqual(["g2"]);
+    expect(m.activeGames[0].scores).toEqual({ c: 1, d: 0 });
+  });
+
+  it("reads the single game stored by older versions", () => {
+    const d = normalizeData({ activeGame: { id: "old", participants: ["a", "b"], scores: { a: 2 } } });
+    expect(d.activeGames.map((x) => x.id)).toEqual(["old"]);
+    expect(normalizeData({ activeGame: { id: "old", participants: ["a"] }, endedGames: ["old"] }).activeGames).toEqual([]);
+  });
+
+  it("knows which players are busy at another table", () => {
+    const games = [g("g1", ["a", "b"], "1"), g("g2", ["c"], "2")];
+    expect([...busyPlayerIds(games)].sort()).toEqual(["a", "b", "c"]);
+    expect([...busyPlayerIds(games, "g1")]).toEqual(["c"]);
+  });
+});
+
+describe("kolhoz rounds", () => {
+  // Ваня → Сергей → Антон → Ваня
+  const start = () =>
+    normalizeData({ activeGames: [{ id: "k", participants: ["v", "s", "a"], events: [], kolhoz: { order: ["v", "s", "a"], rounds: [] } }] }).activeGames[0];
+  const pts = (game, id, pid, d, ts) => addGameEvent(game, { id, pid, d, ts });
+
+  it("each player wins from the next one in the circle", () => {
+    expect(kolhozVictim(["v", "s", "a"], "v")).toBe("s");
+    expect(kolhozVictim(["v", "s", "a"], "a")).toBe("v");
+    let g = pts(pts(start(), "1", "v", 10, 1), "2", "s", 4, 2);
+    const set = kolhozSettlement(g.participants, kolhozAllRounds(g));
+    expect(set.v.s).toBe(10); // Сергей должен Ване 10
+    expect(set.s.v).toBe(-10);
+    expect(set.s.a).toBe(4);
+    expect(set.a.v).toBe(0);
+    expect(kolhozNet(set)).toEqual({ v: 10, s: -6, a: -4 });
+  });
+
+  it("changing positions freezes the round and starts scoring from zero", () => {
+    let g = pts(start(), "1", "v", 10, 1);
+    const next = kolhozSuggestOrder(g.kolhoz.order);
+    expect(next).toEqual(["v", "a", "s"]); // теперь Ваня забивает Антону
+    g = startKolhozRound(g, next);
+    expect(g.scores).toEqual({ v: 0, s: 0, a: 0 });
+    expect(g.kolhoz.rounds).toHaveLength(1);
+    g = pts(g, "2", "v", 3, 2);
+    expect(g.events[1].r).toBe(1);
+    const set = kolhozSettlement(g.participants, kolhozAllRounds(g));
+    expect(set.v).toEqual({ s: 10, a: 3 });
+    expect(kolhozGross(g.participants, kolhozAllRounds(g))).toEqual({ v: 13, s: 0, a: 0 });
+    expect(gameStandings(g)).toEqual({ v: 13, s: -10, a: -3 });
+  });
+
+  it("undo only touches the current round", () => {
+    let g = startKolhozRound(pts(start(), "1", "v", 5, 1), ["v", "a", "s"]);
+    expect(canUndoGame(g)).toBe(false);
+    g = undoGameEvent(g);
+    expect(kolhozAllRounds(g)[0].scores.v).toBe(5);
+  });
+
+  it("swap and reorder before the round starts", () => {
+    expect(kolhozSwap(["v", "s", "a"], 0, 2)).toEqual(["a", "s", "v"]);
+    expect(setKolhozOrder(start(), ["s", "v", "a"]).kolhoz.order).toEqual(["s", "v", "a"]);
+  });
+
+  it("a round closed on one device isn't lost when merging", () => {
+    const base = { ...normalizeData({}), activeGames: [pts(start(), "1", "v", 2, 1)], updatedAt: 1 };
+    const closed = { ...base, activeGames: [startKolhozRound(base.activeGames[0], ["v", "a", "s"])], updatedAt: 2 };
+    const m = mergeData(base, closed);
+    expect(m.activeGames[0].kolhoz.rounds).toHaveLength(1);
+    expect(m.activeGames[0].kolhoz.order).toEqual(["v", "a", "s"]);
+    expect(mergeData(closed, base).activeGames[0].kolhoz.rounds).toHaveLength(1);
+  });
+
+  it("drops a non-numeric settlement from untrusted club data", () => {
+    const out = normalizeData({ matches: [{ id: "m", participants: ["a", "b"], date: "2024-01-01", settlement: { a: { b: { evil: 1 } }, b: "x" } }] });
+    expect(out.matches[0].settlement).toEqual({ a: { b: 0 } });
+  });
+});
+
+describe("playing for money", () => {
+  it("kolhoz: stake per point between every pair", () => {
+    const settlement = { v: { s: 10, a: -3 }, s: { v: -10, a: 4 }, a: { v: 3, s: -4 } };
+    const m = { participants: ["v", "s", "a"], mode: "kolhoz", settlement, stake: 200 };
+    expect(buildPayments(m)).toEqual([
+      { from: "s", to: "v", amount: 2000 },
+      { from: "v", to: "a", amount: 600 },
+      { from: "a", to: "s", amount: 800 },
+    ]);
+    expect(moneyBalance([m])).toEqual({ v: 1400, s: -1200, a: -200 });
+  });
+  it("other games: every loser pays the winner the stake", () => {
+    expect(buildPayments({ participants: ["a", "b", "c"], winnerId: "a", stake: 500 })).toEqual([
+      { from: "b", to: "a", amount: 500 },
+      { from: "c", to: "a", amount: 500 },
+    ]);
+    expect(buildPayments({ participants: ["a", "b"], winnerId: "a" })).toEqual([]);
+    expect(buildPayments({ participants: ["a"], winnerId: "a", stake: 100, solo: true })).toEqual([]);
+  });
+  it("cleans stakes from untrusted data and formats rubles", () => {
+    expect(cleanStake("200")).toBe(200);
+    expect(cleanStake(-5)).toBe(0);
+    expect(cleanStake(1e12)).toBe(1000000);
+    expect(normalizeData({ matches: [{ id: "m", participants: ["a"], date: "2024-01-01", stake: "x" }] }).matches[0].stake).toBe(0);
+    expect(formatRub(-2600).replace(/\s/g, " ")).toBe("−2 600 ₽");
+  });
+});
+
+describe("club data written by a careless or hostile member can't crash the app", () => {
+  it("drops broken series, bracket and game fields", () => {
+    const out = normalizeData({
+      russianMode: "constructor",
+      activeSeries: { participants: "x", targetWins: {} },
+      activeBracket: { rounds: "nope" },
+      activeGames: [{ id: "g", participants: ["a", "b"], gameType: "evil", mode: "__proto__", targets: { a: { x: 1 } }, startedBy: { n: 1 }, bracketRound: "1" }],
+      matches: [{ id: "m", participants: ["a"], date: "2024-01-01", gameType: 5, mode: "toString" }],
+    });
+    expect(out.russianMode).toBe("free");
+    expect(out.activeSeries).toBeNull();
+    expect(out.activeBracket).toBeNull();
+    const g = out.activeGames[0];
+    expect(g).toMatchObject({ gameType: "russian", mode: null, targets: { a: 0 }, startedBy: "", bracketRound: null });
+    expect(out.matches[0]).toMatchObject({ gameType: "russian", mode: null });
+  });
+  it("keeps a valid series and bracket", () => {
+    const out = normalizeData({
+      activeSeries: { id: "s", targetWins: 2, participants: ["a", "b"], wins: { a: 1 } },
+      activeBracket: { id: "b", participants: ["a", "b", "c", "d"], rounds: [[{ a: "a", b: "b", winnerId: null }, { a: "c", b: "d", winnerId: "c" }], [{ a: null, b: "c", winnerId: null }]], champion: null },
+    });
+    expect(out.activeSeries).toMatchObject({ targetWins: 2, bestOf: 3, wins: { a: 1 } });
+    expect(out.activeBracket.rounds[0][1].winnerId).toBe("c");
   });
 });
