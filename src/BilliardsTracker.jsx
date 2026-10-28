@@ -62,12 +62,7 @@ import {
   kolhozNet,
   kolhozGross,
   gameStandings,
-  buildPayments,
-  moneyBalance,
-  cleanStake,
-  formatRub,
 } from "./gameLogic.js";
-import { PaymentsList } from "./ui/PaymentsList.jsx";
 import { FeedbackCard } from "./FeedbackCard.jsx";
 import { isNativeApp } from "./native.js";
 import { buildCsv } from "./csv.js";
@@ -176,9 +171,6 @@ export default function BilliardsTracker() {
   const [clubHistoryError, setClubHistoryError] = useState("");
   const [victory, setVictory] = useState(null);
   const [seriesPick, setSeriesPick] = useState(1);
-  // Playing for money: rubles per ball/point (kolhoz) or per game (others).
-  const [stakeInput, setStakeInput] = useState(() => readLocal("billiards-stake") || "");
-  const [kolhozUnitPick, setKolhozUnitPick] = useState(() => (readLocal("billiards-kolhoz-unit") === "balls" ? "balls" : "points"));
   const [scorePulse, setScorePulse] = useState({ pid: null, ts: 0 });
   const [scoreWheelPid, setScoreWheelPid] = useState(null);
   const lastTapRef = useRef({ key: "", ts: 0 });
@@ -708,8 +700,6 @@ export default function BilliardsTracker() {
     mode,
     targets = null,
     breakerId = null,
-    stake = cleanStake(stakeInput),
-    kolhozUnit = kolhozUnitPick,
     extra = {},
   }) => {
     const scores = {};
@@ -728,8 +718,7 @@ export default function BilliardsTracker() {
       startedAt: new Date().toISOString(),
       startedBy: authorRef.current,
       trimmedRound: -1,
-      stake: participants.length >= 2 ? stake : 0,
-      ...(mode === "kolhoz" && participants.length >= 2 ? { kolhoz: { order: [...participants], rounds: [] }, kolhozUnit } : {}),
+      ...(mode === "kolhoz" && participants.length >= 2 ? { kolhoz: { order: [...participants], rounds: [] } } : {}),
       ...extra,
     };
   };
@@ -804,13 +793,7 @@ export default function BilliardsTracker() {
     const mode = from ? from.mode || null : gameType === "russian" ? data.russianMode || "free" : null;
     const gm = mode ? RUSSIAN_MODES[mode] : null;
     const targets = gm && gm.target ? Object.fromEntries(participants.map((id) => [id, gm.target])) : null;
-    const game = newGame({
-      participants,
-      gameType,
-      mode,
-      targets,
-      ...(from ? { stake: from.stake || 0, kolhozUnit: from.kolhozUnit || "points" } : {}),
-    });
+    const game = newGame({ participants, gameType, mode, targets });
     updateData((prev) => ({ ...prev, activeGames: [...prev.activeGames, game] }));
     setCurrentGameId(game.id);
     setVictory(null);
@@ -858,7 +841,6 @@ export default function BilliardsTracker() {
       gameType,
       mode,
       targets: buildTargets(mode, [m.a, m.b]),
-      stake: 0,
       extra: { bracketRound: roundIdx, bracketMatch: matchIdx },
     });
     updateData((prev) => ({ ...prev, activeGames: [...prev.activeGames, game] }));
@@ -1011,8 +993,6 @@ export default function BilliardsTracker() {
       seriesId: sameSet ? s.id : null,
       settlement,
       ...(kRounds ? { kolhozRounds: kRounds, kolhozNet: kNet } : {}),
-      stake: solo ? 0 : g.stake || 0,
-      ...(g.kolhozUnit ? { kolhozUnit: g.kolhozUnit } : {}),
       bracketId: bracketUpdate ? bracketUpdate.id : null,
     };
 
@@ -1062,9 +1042,6 @@ export default function BilliardsTracker() {
       scores: finalScores,
       kolhozNet: kNet,
       kolhozRounds: kRounds ? kRounds.length : 0,
-      stake: solo ? 0 : g.stake || 0,
-      kolhozUnit: g.kolhozUnit || null,
-      payments: buildPayments({ ...match }),
       durationMs,
       solo,
       mode: g.mode || null,
@@ -1574,7 +1551,6 @@ export default function BilliardsTracker() {
   );
 
   const records = useMemo(() => computeRecords(fMatches), [fMatches]);
-  const money = useMemo(() => moneyBalance(fMatches), [fMatches]);
 
   const achievements = useMemo(() => computeAchievements(stats, data.matches), [stats, data.matches]);
 
@@ -2040,57 +2016,6 @@ export default function BilliardsTracker() {
                       <div style={{ ...styles.hint, margin: "6px 0 0" }}>Порядок можно поменять в любой момент кнопкой «Смена позиций».</div>
                     </div>
                   )}
-                  {isKolhoz && selected.length >= 2 && (
-                    <div style={{ marginTop: "12px" }}>
-                      <p style={styles.hint}>Как считаем</p>
-                      <div style={styles.chipRow}>
-                        {[
-                          ["balls", "Шарами (каждый = 1)"],
-                          ["points", "Очками (номинал шара)"],
-                        ].map(([key, label]) => (
-                          <button
-                            key={key}
-                            onClick={() => {
-                              haptic("light");
-                              setKolhozUnitPick(key);
-                              writeLocal("billiards-kolhoz-unit", key);
-                            }}
-                            style={{ ...styles.selectChip, ...(kolhozUnitPick === key ? styles.selectChipActive : {}) }}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {selected.length >= 2 && (
-                    <div style={{ marginTop: "12px" }}>
-                      <p style={styles.hint}>
-                        💰 На деньги (необязательно) —{" "}
-                        {isKolhoz ? `рублей за ${kolhozUnitPick === "balls" ? "шар" : "очко"} между каждой парой` : "проигравший платит победителю за партию"}
-                      </p>
-                      <div style={{ ...styles.addRow, alignItems: "center" }}>
-                        <input
-                          style={{ ...styles.input, maxWidth: "140px" }}
-                          type="number"
-                          inputMode="numeric"
-                          min="0"
-                          placeholder="0"
-                          aria-label="Ставка, рублей"
-                          value={stakeInput}
-                          onChange={(e) => {
-                            const v = e.target.value.replace(/[^\d]/g, "").slice(0, 7);
-                            setStakeInput(v);
-                            writeLocal("billiards-stake", v);
-                          }}
-                        />
-                        <span style={styles.hint}>
-                          ₽ {isKolhoz ? `за ${kolhozUnitPick === "balls" ? "шар" : "очко"}` : "за партию"}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
                   {!isKolhoz && (selected.length === 4 || selected.length === 8) && (
                     <button style={{ ...styles.diceBtn, marginTop: "10px", width: "100%" }} onClick={startTournament}>
                       <IconTrophy /> Турнир на выбывание ({selected.length} участника{selected.length === 4 ? "" : "ов"})
@@ -2306,8 +2231,7 @@ export default function BilliardsTracker() {
 
               {activeGame && !tieCandidates && (() => {
                 const gm = activeGame.mode ? RUSSIAN_MODES[activeGame.mode] : null;
-                const isPoints = gm && gm.unit === "очков" && activeGame.kolhozUnit !== "balls";
-                const stake = activeGame.stake || 0;
+                const isPoints = gm && gm.unit === "очков";
                 const targetOf = (pid) => (activeGame.targets && activeGame.targets[pid]) || (gm ? gm.target : 0);
                 const reachedId =
                   gm && gm.target
@@ -2330,7 +2254,6 @@ export default function BilliardsTracker() {
                           ▣ Обычный
                         </button>
                         {kolhoz && <span style={styles.fsRoundTag}>Круг {roundNo}</span>}
-                        {stake > 0 && <span style={styles.fsRoundTag}>💰 {formatRub(stake)}</span>}
                         {club && <SyncBadge status={isOffline ? "offline" : clubSync} dotOnly />}
                         <span style={{ flex: 1 }} />
                         {kolhoz && (
@@ -2422,7 +2345,6 @@ export default function BilliardsTracker() {
                               {kolhoz && kolhoz.rounds.length > 0 && (
                                 <div style={{ ...styles.fsTotal, color: kTotals[pid] > 0 ? "#9BE3B0" : kTotals[pid] < 0 ? "#F2A99C" : "#F3EBDA" }}>
                                   итого {signed(kTotals[pid] || 0)}
-                                  {stake ? ` · ${(kTotals[pid] || 0) > 0 ? "+" : ""}${formatRub((kTotals[pid] || 0) * stake)}` : ""}
                                 </div>
                               )}
                             </div>
@@ -2499,11 +2421,6 @@ export default function BilliardsTracker() {
                       {gm.target ? ` · до ${gm.target} ${gm.unit}` : " · завершите вручную, когда закончите"}
                     </p>
                   )}
-                  {stake > 0 && (
-                    <p style={{ ...styles.hint, fontWeight: 700 }}>
-                      💰 {formatRub(stake)} {kolhoz ? `за ${activeGame.kolhozUnit === "balls" ? "шар" : "очко"}` : "за партию"}
-                    </p>
-                  )}
                   {kolhoz && (
                     <div style={{ ...styles.breakerBanner, textAlign: "left" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "6px" }}>
@@ -2522,7 +2439,6 @@ export default function BilliardsTracker() {
                                 <PlayerBall color={playerColor(pid)} size={10} /> {nameById(pid)}{" "}
                                 <strong style={{ color: kTotals[pid] > 0 ? "#3E9B5C" : kTotals[pid] < 0 ? COLORS.danger : undefined }}>
                                   {signed(kTotals[pid] || 0)}
-                                  {stake ? ` · ${(kTotals[pid] || 0) > 0 ? "+" : ""}${formatRub((kTotals[pid] || 0) * stake)}` : ""}
                                 </strong>
                               </span>
                             ))}
@@ -2791,28 +2707,6 @@ export default function BilliardsTracker() {
                   </div>
                 )}
               </div>
-
-              {Object.keys(money).length > 0 && (
-                <div style={styles.card}>
-                  <h2 style={styles.h2}>💰 Деньги</h2>
-                  <p style={styles.hint}>Итог по партиям на деньги {PERIOD_LABELS[statsFilter.period]}: + выиграл, − проиграл.</p>
-                  <ol style={styles.rankList}>
-                    {Object.entries(money)
-                      .sort((a, b) => b[1] - a[1])
-                      .map(([pid, v]) => (
-                        <li key={pid} style={styles.rankItem}>
-                          <span style={styles.rankName}>
-                            <PlayerBall color={playerColor(pid)} /> {nameById(pid)}
-                          </span>
-                          <span style={{ ...styles.rankScore, color: v > 0 ? "#3E9B5C" : v < 0 ? COLORS.danger : undefined, fontWeight: 700 }}>
-                            {v > 0 ? "+" : ""}
-                            {formatRub(v)}
-                          </span>
-                        </li>
-                      ))}
-                  </ol>
-                </div>
-              )}
 
               <div style={styles.card}>
                 <h2 style={styles.h2}>Достижения</h2>
@@ -3415,13 +3309,6 @@ export default function BilliardsTracker() {
                     : ""}
                 </p>
                 <p style={styles.modalHint}>Продолжительность: {formatDuration(selectedMatch.durationMs)}</p>
-                {buildPayments(selectedMatch).length > 0 && (
-                  <div style={styles.modalHint}>
-                    💰 На деньги: {formatRub(selectedMatch.stake)}{" "}
-                    {selectedMatch.mode === "kolhoz" ? `за ${selectedMatch.kolhozUnit === "balls" ? "шар" : "очко"}` : "за партию"}
-                    <PaymentsList payments={buildPayments(selectedMatch)} nameById={nameById} />
-                  </div>
-                )}
                 {(selectedMatch.createdBy || selectedMatch.modifiedBy) && (
                   <p style={styles.modalHint}>
                     {selectedMatch.createdBy ? `Записал(а): ${selectedMatch.createdBy}` : ""}
@@ -3562,12 +3449,6 @@ export default function BilliardsTracker() {
                   nameById={nameById}
                   playerColor={playerColor}
                 />
-              </div>
-            )}
-            {victory.payments && victory.payments.length > 0 && (
-              <div style={{ ...styles.breakerBanner, marginTop: "10px", textAlign: "left" }}>
-                💰 Расчёт ({formatRub(victory.stake)} {victory.mode === "kolhoz" ? `за ${victory.kolhozUnit === "balls" ? "шар" : "очко"}` : "за партию"}):
-                <PaymentsList payments={victory.payments} nameById={nameById} />
               </div>
             )}
             {victory.bracket && (

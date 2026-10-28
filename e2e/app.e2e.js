@@ -174,14 +174,15 @@ test("two games at once: each table keeps its own score", async ({ page }) => {
   expect(s.activeGames[0].scores).toEqual({ p3: 0, p4: 2 });
 });
 
-test("kolhoz: rounds with position change and money", async ({ page }) => {
+test("kolhoz: rounds with position change, points by ball value", async ({ page }) => {
   await seed(page, base({ players: four.slice(0, 3).concat(four[3]), russianMode: "kolhoz" }));
   await openGame(page);
   for (const n of ["Ваня", "Сергей", "Антон"]) await page.getByRole("button", { name: n, exact: true }).click();
-  await page.getByRole("button", { name: "Шарами (каждый = 1)" }).click();
-  await page.getByLabel("Ставка, рублей").fill("200");
+  await expect(page.getByText("Как считаем")).toHaveCount(0);
+  await expect(page.getByLabel("Ставка, рублей")).toHaveCount(0);
   await page.getByRole("button", { name: "Начать партию" }).click();
 
+  await page.getByRole("button", { name: "3", exact: true }).click();
   await page.getByRole("button", { name: "Добавить: Ваня" }).click();
   await page.waitForTimeout(120);
   await page.getByRole("button", { name: "Добавить: Ваня" }).click();
@@ -192,12 +193,11 @@ test("kolhoz: rounds with position change and money", async ({ page }) => {
   await expect.poll(() => scores(page)).toEqual(["0", "0", "0"]);
 
   await page.getByRole("button", { name: "Завершить партию" }).click();
-  await expect(page.getByText("Сергей → Ваня")).toBeVisible();
-  await expect(page.getByText(/400\s₽/).first()).toBeVisible();
+  await expect(page.getByText(/Расчёт за 1 кр/)).toBeVisible();
   await page.getByRole("button", { name: /К рейтингу/ }).click();
   const m = (await stored(page)).matches[0];
-  expect(m.stake).toBe(200);
-  expect(m.kolhozNet).toEqual({ p4: 2, p3: -2, p1: 0 });
+  expect(m).not.toHaveProperty("stake");
+  expect(m.kolhozNet).toEqual({ p4: 6, p3: -6, p1: 0 });
 });
 
 test("feedback form is in the «Ещё» tab", async ({ page }) => {

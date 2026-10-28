@@ -38,10 +38,6 @@ import {
   kolhozNet,
   kolhozGross,
   gameStandings,
-  buildPayments,
-  moneyBalance,
-  cleanStake,
-  formatRub,
 } from "./gameLogic.js";
 
 describe("uid", () => {
@@ -792,34 +788,6 @@ describe("kolhoz rounds", () => {
   });
 });
 
-describe("playing for money", () => {
-  it("kolhoz: stake per point between every pair", () => {
-    const settlement = { v: { s: 10, a: -3 }, s: { v: -10, a: 4 }, a: { v: 3, s: -4 } };
-    const m = { participants: ["v", "s", "a"], mode: "kolhoz", settlement, stake: 200 };
-    expect(buildPayments(m)).toEqual([
-      { from: "s", to: "v", amount: 2000 },
-      { from: "v", to: "a", amount: 600 },
-      { from: "a", to: "s", amount: 800 },
-    ]);
-    expect(moneyBalance([m])).toEqual({ v: 1400, s: -1200, a: -200 });
-  });
-  it("other games: every loser pays the winner the stake", () => {
-    expect(buildPayments({ participants: ["a", "b", "c"], winnerId: "a", stake: 500 })).toEqual([
-      { from: "b", to: "a", amount: 500 },
-      { from: "c", to: "a", amount: 500 },
-    ]);
-    expect(buildPayments({ participants: ["a", "b"], winnerId: "a" })).toEqual([]);
-    expect(buildPayments({ participants: ["a"], winnerId: "a", stake: 100, solo: true })).toEqual([]);
-  });
-  it("cleans stakes from untrusted data and formats rubles", () => {
-    expect(cleanStake("200")).toBe(200);
-    expect(cleanStake(-5)).toBe(0);
-    expect(cleanStake(1e12)).toBe(1000000);
-    expect(normalizeData({ matches: [{ id: "m", participants: ["a"], date: "2024-01-01", stake: "x" }] }).matches[0].stake).toBe(0);
-    expect(formatRub(-2600).replace(/\s/g, " ")).toBe("−2 600 ₽");
-  });
-});
-
 describe("club data written by a careless or hostile member can't crash the app", () => {
   it("drops broken series, bracket and game fields", () => {
     const out = normalizeData({
@@ -929,5 +897,19 @@ describe("trim marker from older versions and untrusted data", () => {
     expect(full({ trimmedRound: 5000 }).trimmedRound).toBe(0);
     expect(full({ trimmedRound: "x" }).trimmedRound).toBe(0);
     expect(full({ trimmedRound: -1 }).trimmedRound).toBe(-1);
+  });
+});
+
+describe("money feature removed", () => {
+  it("drops stake and counting unit left in old data", () => {
+    const out = normalizeData({
+      matches: [{ id: "m", participants: ["a", "b"], date: "2024-01-01", stake: 200, kolhozUnit: "balls", payments: [1] }],
+      activeGames: [{ id: "g", participants: ["a", "b"], events: [], stake: 200, kolhozUnit: "balls" }],
+    });
+    expect(out.matches[0]).not.toHaveProperty("stake");
+    expect(out.matches[0]).not.toHaveProperty("kolhozUnit");
+    expect(out.matches[0]).not.toHaveProperty("payments");
+    expect(out.activeGames[0]).not.toHaveProperty("stake");
+    expect(out.activeGames[0]).not.toHaveProperty("kolhozUnit");
   });
 });
