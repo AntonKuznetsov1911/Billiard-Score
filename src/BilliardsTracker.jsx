@@ -64,6 +64,7 @@ import {
   gameStandings,
 } from "./gameLogic.js";
 import { FeedbackCard } from "./FeedbackCard.jsx";
+import { InstallCard } from "./InstallCard.jsx";
 import { isNativeApp } from "./native.js";
 import { buildCsv } from "./csv.js";
 import { getTG, haptic } from "./telegram.js";
@@ -2930,6 +2931,8 @@ export default function BilliardsTracker() {
 
           {tab === "settings" && (
             <section>
+              <InstallCard styles={styles} />
+
               <div style={styles.card}>
                 <h2 style={styles.h2}>Тип игры</h2>
                 <p style={styles.hint}>Выбор влияет на оформление стола и отмечается в каждой партии</p>
