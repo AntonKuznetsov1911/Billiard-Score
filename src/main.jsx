@@ -5,6 +5,10 @@ import BilliardsTracker from "./BilliardsTracker.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import UpdateBanner from "./UpdateBanner.jsx";
 import { pingUsage } from "./analytics.js";
+import { initInstallPrompt } from "./install.js";
+
+// Before render: Chrome may offer installation right away.
+initInstallPrompt();
 
 // Адаптер хранилища: внутри Claude есть window.storage; вне его (браузер,
 // Telegram Mini App) используем localStorage с тем же интерфейсом.

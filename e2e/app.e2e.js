@@ -210,3 +210,13 @@ test("feedback form is in the «Ещё» tab", async ({ page }) => {
   await page.getByRole("button", { name: "Отправить" }).click();
   await expect(page.getByText("Напишите хотя бы пару слов")).toBeVisible();
 });
+
+test("«Ещё» shows how to install the app and a share button", async ({ page }) => {
+  await seed(page, base());
+  await openGame(page);
+  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await expect(page.getByRole("heading", { name: /Установить на телефон/ })).toBeVisible();
+  // no browser install prompt in tests → Android instructions (Pixel 7 profile)
+  await expect(page.getByText(/Установить приложение» или «Добавить на главный экран/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /Поделиться ссылкой/ })).toBeVisible();
+});
