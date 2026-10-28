@@ -798,10 +798,15 @@ export function setKolhozOrder(g, newOrder) {
 // whose events have been trimmed from the log.
 export function kolhozAllRounds(g) {
   if (!g || !g.kolhoz) return [];
-  const logged = new Set((g.events || []).map((e) => e.r || 0));
+  const events = g.events || [];
+  const logged = new Set(events.map((e) => e.r || 0));
+  // Once the log hit its cap, the oldest round still in it may have lost its
+  // first events — that round (and older ones) keep their snapshot.
+  const trimmedUpTo = events.length >= EVENT_LIMIT ? Math.min(...events.map((e) => e.r || 0)) : -1;
   const done = g.kolhoz.rounds.map((r, i) => ({
     order: r.order,
-    scores: logged.has(i) || (i === 0 && Object.keys(g.baseScores || {}).length) ? roundScores(g, i) : r.scores,
+    scores:
+      i > trimmedUpTo && (logged.has(i) || (i === 0 && Object.keys(g.baseScores || {}).length)) ? roundScores(g, i) : r.scores,
   }));
   const live = { order: g.kolhoz.order, scores: { ...g.scores } };
   const hasLive = Object.values(live.scores).some((v) => v > 0);
