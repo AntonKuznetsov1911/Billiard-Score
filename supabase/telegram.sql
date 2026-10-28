@@ -79,9 +79,9 @@ create index if not exists app_usage_created on app_usage (created_at);
 -- Политик нет: читать таблицу через API нельзя никому, писать — только функцией ниже.
 alter table app_usage enable row level security;
 
--- The device id comes from the caller, so anyone with the public key could
--- send made-up ones: past 60 new records a minute the extra ones are ignored,
--- which bounds both inflated numbers and storage.
+-- id устройства присылает само приложение, поэтому с публичным ключом можно
+-- прислать и выдуманные: больше 60 новых записей в минуту не принимается —
+-- это ограничивает и накрутку, и рост таблицы.
 create or replace function public.ping_app(p_device uuid, p_platform text, p_version text default null)
 returns void
 language plpgsql
