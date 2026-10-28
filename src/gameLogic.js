@@ -9,7 +9,7 @@ export function loadInitial() {
     players: [],
     matches: [],
     trash: [],
-    activeGame: null,
+    activeGames: [],
     activeSeries: null,
     activeBracket: null,
     theme: "light",
@@ -32,6 +32,56 @@ const cleanScores = (v) => {
   if (isObj(v)) Object.keys(v).slice(0, 20).forEach((k) => (out[k] = cleanNum(v[k], 999)));
   return out;
 };
+const cleanSigned = (v, max = 100000) => (typeof v === "number" && Number.isFinite(v) ? Math.max(-max, Math.min(max, Math.round(v))) : 0);
+const cleanPidList = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && x).map((x) => x.slice(0, 64)).slice(0, 20) : []);
+const cleanId = (v) => (typeof v === "string" && v ? v.slice(0, 64) : null);
+const cleanInt = (v, min, max) => (typeof v === "number" && Number.isInteger(v) && v >= min && v <= max ? v : null);
+const cleanGameType = (v) => (v === "pool" ? "pool" : "russian");
+const cleanMode = (v) => (typeof v === "string" && Object.prototype.hasOwnProperty.call(RUSSIAN_MODES, v) ? v : null);
+
+// Series and bracket are shared through the club too — anything malformed is
+// dropped instead of crashing every member's screen.
+function sanitizeSeries(s) {
+  if (!isObj(s)) return null;
+  const participants = cleanPidList(s.participants);
+  const targetWins = cleanInt(s.targetWins, 1, 10);
+  if (participants.length < 2 || !targetWins) return null;
+  return { ...s, id: cleanId(s.id) || "s", targetWins, bestOf: targetWins * 2 - 1, participants, wins: cleanScores(s.wins) };
+}
+
+function sanitizeBracket(b) {
+  if (!isObj(b) || !Array.isArray(b.rounds) || !b.rounds.length || b.rounds.length > 4) return null;
+  const rounds = b.rounds.map((r) =>
+    (Array.isArray(r) ? r : []).slice(0, 8).map((m) => (isObj(m) ? { a: cleanId(m.a), b: cleanId(m.b), winnerId: cleanId(m.winnerId) } : { a: null, b: null, winnerId: null }))
+  );
+  if (rounds.some((r) => !r.length)) return null;
+  return { ...b, id: cleanId(b.id) || "b", participants: cleanPidList(b.participants), rounds, champion: cleanId(b.champion) };
+}
+
+// Kolhoz pair matrix (settlement[a][b] = how much b owes a). It is rendered
+// as-is, so anything that isn't a plain number is dropped.
+function cleanSettlement(v) {
+  if (!isObj(v)) return null;
+  const out = {};
+  Object.keys(v)
+    .slice(0, 20)
+    .forEach((a) => {
+      if (!isObj(v[a])) return;
+      out[a] = {};
+      Object.keys(v[a])
+        .slice(0, 20)
+        .forEach((b) => (out[a][b] = cleanSigned(v[a][b])));
+    });
+  return out;
+}
+
+function cleanKolhozRounds(v) {
+  return (Array.isArray(v) ? v : [])
+    .filter((r) => isObj(r))
+    .slice(0, 200)
+    .map((r) => ({ order: cleanPidList(r.order), scores: cleanScores(r.scores) }))
+    .filter((r) => r.order.length >= 2);
+}
 
 // Data can come from a shared club (written by any member), a backup file or
 // storage, so it is treated as untrusted: structurally broken records are
@@ -69,10 +119,17 @@ export function sanitizeMatches(list) {
       durationMs: cleanNum(m.durationMs, 7 * 86400000),
       solo: !!m.solo,
       breakerId: typeof m.breakerId === "string" ? m.breakerId : null,
+      gameType: cleanGameType(m.gameType),
+      mode: cleanMode(m.mode),
       breakerPotted: m.breakerPotted === true || m.breakerPotted === false ? m.breakerPotted : null,
       modifiedAt: cleanStamp(m.modifiedAt),
       createdBy: cleanStr(m.createdBy, 40),
       modifiedBy: cleanStr(m.modifiedBy, 40),
+      settlement: cleanSettlement(m.settlement),
+      stake: cleanStake(m.stake),
+      ...(m.kolhozUnit === "balls" || m.kolhozUnit === "points" ? { kolhozUnit: m.kolhozUnit } : {}),
+      ...(m.kolhozRounds ? { kolhozRounds: cleanKolhozRounds(m.kolhozRounds) } : {}),
+      ...(isObj(m.kolhozNet) ? { kolhozNet: Object.fromEntries(Object.keys(m.kolhozNet).slice(0, 20).map((k) => [k, cleanSigned(m.kolhozNet[k])])) } : {}),
     }));
 }
 
@@ -140,6 +197,8 @@ function sanitizeEvent(e) {
   const ts = typeof e.ts === "number" && Number.isFinite(e.ts) ? e.ts : 0;
   const base = { id: e.id.slice(0, 64), pid: e.pid.slice(0, 64), ts };
   if (typeof e.by === "string" && e.by) base.by = e.by.slice(0, 40);
+  // Kolhoz: which round (circle of positions) the tap belongs to.
+  if (typeof e.r === "number" && Number.isInteger(e.r) && e.r > 0 && e.r < 1000) base.r = e.r;
   if (typeof e.v === "number" && Number.isFinite(e.v)) return { ...base, v: Math.max(0, Math.min(999, Math.floor(e.v))) };
   if (typeof e.d === "number" && Number.isFinite(e.d)) return { ...base, d: Math.max(-999, Math.min(999, Math.round(e.d))) };
   return null;
@@ -166,12 +225,20 @@ function mergeTombstones(x, y) {
 
 const eventOrder = (x, y) => x.ts - y.ts || (x.id < y.id ? -1 : x.id > y.id ? 1 : 0);
 
+// Kolhoz games are played in rounds; only taps of the current round count
+// towards the live score (finished rounds are frozen in `kolhoz.rounds`).
+export function currentRound(g) {
+  return g && g.kolhoz ? g.kolhoz.rounds.length : 0;
+}
+const inCurrentRound = (g, e) => (e.r || 0) === currentRound(g);
+
 export function computeGameScores(g) {
   const scores = {};
-  g.participants.forEach((pid) => (scores[pid] = (g.baseScores && g.baseScores[pid]) || 0));
+  const fresh = currentRound(g) > 0;
+  g.participants.forEach((pid) => (scores[pid] = (!fresh && g.baseScores && g.baseScores[pid]) || 0));
   const undone = new Set(g.undone || []);
   [...(g.events || [])].sort(eventOrder).forEach((e) => {
-    if (undone.has(e.id) || !(e.pid in scores)) return;
+    if (undone.has(e.id) || !(e.pid in scores) || !inCurrentRound(g, e)) return;
     scores[e.pid] = "v" in e ? e.v : Math.max(0, Math.min(999, scores[e.pid] + e.d));
   });
   return scores;
@@ -182,7 +249,7 @@ function withScores(g) {
 }
 
 export function addGameEvent(g, event) {
-  const e = sanitizeEvent(event);
+  const e = sanitizeEvent(g && currentRound(g) ? { ...event, r: currentRound(g) } : event);
   if (!g || !e) return g;
   return withScores({ ...g, events: [...(g.events || []), e].slice(-EVENT_LIMIT) });
 }
@@ -190,7 +257,7 @@ export function addGameEvent(g, event) {
 function lastUndoableEvent(g) {
   if (!g) return null;
   const undone = new Set(g.undone || []);
-  const live = (g.events || []).filter((e) => !undone.has(e.id)).sort(eventOrder);
+  const live = (g.events || []).filter((e) => !undone.has(e.id) && inCurrentRound(g, e)).sort(eventOrder);
   return live.length ? live[live.length - 1] : null;
 }
 
@@ -222,33 +289,68 @@ function sanitizeActiveGame(g) {
   if (!isObj(g) || !Array.isArray(g.participants) || !g.participants.length || !g.participants.every((x) => typeof x === "string")) {
     return null;
   }
-  const { actionLog, ...rest } = g;
+  const { actionLog, kolhoz, ...rest } = g;
   const legacy = !Array.isArray(g.events);
-  return withScores({
+  const participants = g.participants.slice(0, 20).map((x) => x.slice(0, 64));
+  const out = {
     ...rest,
     id: typeof g.id === "string" && g.id ? g.id.slice(0, 64) : `g-${typeof g.startedAt === "string" ? g.startedAt : "0"}`,
-    participants: g.participants.slice(0, 20),
+    participants,
     // Games saved before the event log existed start from their stored score.
     baseScores: cleanScores(legacy ? g.scores : g.baseScores),
     events: legacy ? [] : g.events.map(sanitizeEvent).filter(Boolean).slice(-EVENT_LIMIT),
     undone: cleanIds(g.undone, EVENT_LIMIT),
+    stake: cleanStake(g.stake),
+    gameType: cleanGameType(g.gameType),
+    mode: cleanMode(g.mode),
+    targets: isObj(g.targets) ? cleanScores(g.targets) : null,
+    breakerId: cleanId(g.breakerId),
+    startedAt: typeof g.startedAt === "string" && !Number.isNaN(new Date(g.startedAt).getTime()) ? g.startedAt.slice(0, 40) : new Date(0).toISOString(),
+    startedBy: cleanStr(g.startedBy, 40),
+    bracketRound: cleanInt(g.bracketRound, 0, 3),
+    bracketMatch: cleanInt(g.bracketMatch, 0, 7),
+  };
+  if (g.kolhozUnit === "balls" || g.kolhozUnit === "points") out.kolhozUnit = g.kolhozUnit;
+  if (isObj(kolhoz)) {
+    const order = cleanPidList(kolhoz.order).filter((pid) => participants.includes(pid));
+    out.kolhoz = {
+      order: order.length === participants.length ? order : participants,
+      rounds: cleanKolhozRounds(kolhoz.rounds),
+    };
+  }
+  return withScores(out);
+}
+
+const GAMES_LIMIT = 30;
+
+// Several games can run at once (different tables or even different places
+// within one club). Older versions stored a single `activeGame` — it is
+// picked up here so a club member on an old version isn't lost.
+function sanitizeActiveGames(list, legacy, ended) {
+  const out = new Map();
+  [...(Array.isArray(list) ? list : []), legacy].forEach((raw) => {
+    const g = sanitizeActiveGame(raw);
+    if (!g || ended.has(g.id)) return;
+    out.set(g.id, out.has(g.id) ? mergeActiveGames(out.get(g.id), g) : g);
   });
+  return [...out.values()].slice(0, GAMES_LIMIT);
 }
 
 export function normalizeData(input) {
   const parsed = isObj(input) ? input : {};
+  const endedGames = cleanIds(parsed.endedGames, ENDED_LIMIT);
   return {
     players: sanitizePlayers(parsed.players),
     matches: sanitizeMatches(parsed.matches),
     trash: sanitizeTrash(parsed.trash),
-    activeGame: sanitizeActiveGame(parsed.activeGame),
-    activeSeries: isObj(parsed.activeSeries) ? parsed.activeSeries : null,
-    activeBracket: isObj(parsed.activeBracket) ? parsed.activeBracket : null,
+    activeGames: sanitizeActiveGames(parsed.activeGames, parsed.activeGame, new Set(endedGames)),
+    activeSeries: sanitizeSeries(parsed.activeSeries),
+    activeBracket: sanitizeBracket(parsed.activeBracket),
     theme: parsed.theme === "dark" ? "dark" : "light",
     gameType: parsed.gameType === "pool" ? "pool" : "russian",
-    russianMode: RUSSIAN_MODES[parsed.russianMode] ? parsed.russianMode : "free",
+    russianMode: cleanMode(parsed.russianMode) || "free",
     deletedPlayers: cleanTombstones(parsed.deletedPlayers),
-    endedGames: cleanIds(parsed.endedGames, ENDED_LIMIT),
+    endedGames,
     metaAt: cleanStamp(parsed.metaAt),
     updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
   };
@@ -296,9 +398,12 @@ export function stampChanges(prev, next, now = Date.now(), by = "") {
     const removed = (prev.players || []).filter((p) => !kept.has(p.id)).map((p) => p.id);
     if (removed.length) out = { ...out, deletedPlayers: mergeTombstones(prev.deletedPlayers, removed.map((id) => ({ id, at: now }))) };
   }
-  const pg = prev.activeGame;
-  if (pg && (!next.activeGame || next.activeGame.id !== pg.id)) {
-    out = { ...out, endedGames: [...(out.endedGames || prev.endedGames || []).filter((id) => id !== pg.id), pg.id].slice(-ENDED_LIMIT) };
+  if (next.activeGames !== prev.activeGames) {
+    const still = new Set((next.activeGames || []).map((g) => g.id));
+    const gone = (prev.activeGames || []).map((g) => g.id).filter((id) => !still.has(id));
+    if (gone.length) {
+      out = { ...out, endedGames: [...(out.endedGames || prev.endedGames || []).filter((id) => !gone.includes(id)), ...gone].slice(-ENDED_LIMIT) };
+    }
   }
   if (META_KEYS.some((k) => next[k] !== prev[k])) out = { ...out, metaAt: now };
   return out;
@@ -312,12 +417,30 @@ const unionIds = (x, y, limit) => {
 function mergeActiveGames(x, y) {
   const events = new Map();
   [...(x.events || []), ...(y.events || [])].forEach((e) => events.set(e.id, e));
-  return withScores({
+  const merged = {
     ...y,
     baseScores: { ...(x.baseScores || {}), ...(y.baseScores || {}) },
     events: [...events.values()].sort(eventOrder).slice(-EVENT_LIMIT),
     undone: unionIds(x.undone, y.undone, EVENT_LIMIT),
+  };
+  // Rounds are only ever appended, so the copy that has played further is newer.
+  if (x.kolhoz || y.kolhoz) {
+    const kx = x.kolhoz || { rounds: [] };
+    const ky = y.kolhoz || { rounds: [] };
+    merged.kolhoz = kx.rounds.length > ky.rounds.length ? kx : ky;
+  }
+  return withScores(merged);
+}
+
+function mergeGameLists(newer, older, ended) {
+  const out = new Map();
+  [...(older || []), ...(newer || [])].forEach((g) => {
+    if (!g || ended.has(g.id)) return;
+    out.set(g.id, out.has(g.id) ? mergeActiveGames(out.get(g.id), g) : g);
   });
+  return [...out.values()]
+    .sort((p, q) => String(p.startedAt || "").localeCompare(String(q.startedAt || "")) || (p.id < q.id ? -1 : 1))
+    .slice(-GAMES_LIMIT);
 }
 
 // Combine two copies of the app state (this device's and another member's)
@@ -363,13 +486,7 @@ export function mergeData(a, b) {
     .slice(-TRASH_LIMIT);
 
   const endedGames = unionIds(older.endedGames, newer.endedGames, ENDED_LIMIT);
-  const ended = new Set(endedGames);
-  const games = [newer.activeGame, older.activeGame].filter((g) => g && !ended.has(g.id));
-  let activeGame = games[0] || null;
-  if (games.length === 2) {
-    if (games[0].id === games[1].id) activeGame = mergeActiveGames(games[1], games[0]);
-    else if (String(games[1].startedAt || "") > String(games[0].startedAt || "")) activeGame = games[1];
-  }
+  const activeGames = mergeGameLists(newer.activeGames, older.activeGames, new Set(endedGames));
 
   const metaSource = cleanStamp(older.metaAt) > cleanStamp(newer.metaAt) ? older : newer;
   const meta = {};
@@ -381,7 +498,7 @@ export function mergeData(a, b) {
     players: [...players.values()],
     matches,
     trash,
-    activeGame,
+    activeGames,
     deletedPlayers,
     endedGames,
     metaAt: Math.max(cleanStamp(older.metaAt), cleanStamp(newer.metaAt)),
@@ -615,6 +732,150 @@ export function buildKolhozSettlement(participants, scores) {
     });
   });
   return matrix;
+}
+
+// ---------------------------------------------------------------------------
+// Kolhoz: players sit in a circle and each one pots "against" the next one
+// (order [Ваня, Сергей, Антон] → Ваня забивает Сергею, Сергей — Антону,
+// Антон — Ване). After a round the positions are changed and scoring goes on
+// in the new order; the pair results add up over all rounds.
+// ---------------------------------------------------------------------------
+
+export function kolhozVictim(order, pid) {
+  const i = order.indexOf(pid);
+  return i < 0 || order.length < 2 ? null : order[(i + 1) % order.length];
+}
+
+// The same circle read the other way round — for three players the only
+// other order in which everyone gets a new opponent.
+export function kolhozSuggestOrder(order) {
+  return order.length < 3 ? [...order] : [order[0], ...order.slice(1).reverse()];
+}
+
+export function kolhozSwap(order, i, j) {
+  if (i === j || i < 0 || j < 0 || i >= order.length || j >= order.length) return order;
+  const next = [...order];
+  [next[i], next[j]] = [next[j], next[i]];
+  return next;
+}
+
+export function startKolhozRound(g, newOrder) {
+  if (!g || !g.kolhoz) return g;
+  const order = newOrder && newOrder.length === g.kolhoz.order.length && newOrder.every((p) => g.participants.includes(p)) ? newOrder : g.kolhoz.order;
+  const done = { order: g.kolhoz.order, scores: { ...g.scores } };
+  return withScores({ ...g, kolhoz: { order: [...order], rounds: [...g.kolhoz.rounds, done].slice(-200) } });
+}
+
+// Only the order of a round that has no points yet can be changed in place.
+export function setKolhozOrder(g, newOrder) {
+  if (!g || !g.kolhoz || newOrder.length !== g.kolhoz.order.length) return g;
+  return { ...g, kolhoz: { ...g.kolhoz, order: [...newOrder] } };
+}
+
+// Finished rounds plus the current one (if anything was scored in it).
+export function kolhozAllRounds(g) {
+  if (!g || !g.kolhoz) return [];
+  const live = { order: g.kolhoz.order, scores: { ...g.scores } };
+  const hasLive = Object.values(live.scores).some((v) => v > 0);
+  return [...g.kolhoz.rounds, ...(hasLive ? [live] : [])];
+}
+
+// settlement[a][b] > 0 — b owes a that many points.
+export function kolhozSettlement(participants, rounds) {
+  const owed = {};
+  participants.forEach((a) => {
+    owed[a] = {};
+    participants.forEach((b) => a !== b && (owed[a][b] = 0));
+  });
+  rounds.forEach((r) => {
+    r.order.forEach((pid) => {
+      const victim = kolhozVictim(r.order, pid);
+      const pts = (r.scores && r.scores[pid]) || 0;
+      if (!victim || !owed[pid] || owed[pid][victim] === undefined) return;
+      owed[pid][victim] += pts;
+      owed[victim][pid] -= pts;
+    });
+  });
+  return owed;
+}
+
+export function kolhozNet(settlement) {
+  const net = {};
+  Object.keys(settlement || {}).forEach((a) => {
+    net[a] = Object.values(settlement[a]).reduce((s, v) => s + v, 0);
+  });
+  return net;
+}
+
+// Points each player potted over all rounds (for ball stats).
+export function kolhozGross(participants, rounds) {
+  const out = {};
+  participants.forEach((pid) => (out[pid] = rounds.reduce((s, r) => s + ((r.scores && r.scores[pid]) || 0), 0)));
+  return out;
+}
+
+// What decides the winner: the total in normal games, the net result in kolhoz.
+export function gameStandings(g) {
+  if (!g) return {};
+  if (!g.kolhoz) return g.scores || {};
+  return kolhozNet(kolhozSettlement(g.participants, kolhozAllRounds(g)));
+}
+
+// ---------------------------------------------------------------------------
+// Playing for money. Kolhoz: `stake` per point (or per ball, when balls are
+// counted one each) between every pair; other games: each loser pays the
+// winner `stake` for the game. Amounts are whole rubles.
+// ---------------------------------------------------------------------------
+
+export const MAX_STAKE = 1000000;
+export const cleanStake = (v) => {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) && n > 0 ? Math.min(MAX_STAKE, n) : 0;
+};
+
+// [{ from, to, amount }] — who pays whom, one line per pair.
+export function buildPayments(m) {
+  const stake = cleanStake(m && m.stake);
+  if (!stake || !m || m.solo) return [];
+  const out = [];
+  if (m.settlement && m.mode === "kolhoz") {
+    const ids = m.participants;
+    ids.forEach((a, i) =>
+      ids.slice(i + 1).forEach((b) => {
+        const diff = (m.settlement[a] && m.settlement[a][b]) || 0;
+        if (diff > 0) out.push({ from: b, to: a, amount: diff * stake });
+        if (diff < 0) out.push({ from: a, to: b, amount: -diff * stake });
+      })
+    );
+    return out;
+  }
+  if (!m.winnerId) return [];
+  m.participants.filter((p) => p !== m.winnerId).forEach((p) => out.push({ from: p, to: m.winnerId, amount: stake }));
+  return out;
+}
+
+// Net money per player over a set of matches (+ won, − lost).
+export function moneyBalance(matches) {
+  const bal = {};
+  (matches || []).forEach((m) =>
+    buildPayments(m).forEach(({ from, to, amount }) => {
+      bal[from] = (bal[from] || 0) - amount;
+      bal[to] = (bal[to] || 0) + amount;
+    })
+  );
+  return bal;
+}
+
+export function formatRub(n) {
+  const v = Math.round(n || 0);
+  return `${v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("ru-RU")} ₽`;
+}
+
+// Players already at another table can't be put into a second game.
+export function busyPlayerIds(games, exceptGameId = null) {
+  const busy = new Set();
+  (games || []).forEach((g) => g.id !== exceptGameId && g.participants.forEach((p) => busy.add(p)));
+  return busy;
 }
 
 // ---------------------------------------------------------------------------

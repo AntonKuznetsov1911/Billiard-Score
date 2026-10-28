@@ -113,9 +113,16 @@ export async function joinClub(code, displayName) {
     p_code: clean,
     p_display_name: displayName || null,
   });
-  if (!rpcError) return joined;
+  if (!rpcError) {
+    // security.sql returns an empty row (not an error) for a wrong code, so the failed attempt is counted.
+    if (!joined || !joined.id) throw new Error("Клуб с таким кодом не найден");
+    return joined;
+  }
   if (rpcError.code === "P0002" || /club_not_found/.test(rpcError.message || "")) {
     throw new Error("Клуб с таким кодом не найден");
+  }
+  if (/too_many_attempts/.test(rpcError.message || "")) {
+    throw new Error("Слишком много неверных кодов — попробуйте через 15 минут");
   }
   // Database not hardened yet (function missing): fall back to the legacy lookup.
   const missing = rpcError.code === "PGRST202" || rpcError.code === "42883" || /Could not find the function/i.test(rpcError.message || "");

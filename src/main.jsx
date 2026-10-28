@@ -1,4 +1,5 @@
 import React from "react";
+import "./fonts.js";
 import { createRoot } from "react-dom/client";
 import BilliardsTracker from "./BilliardsTracker.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";

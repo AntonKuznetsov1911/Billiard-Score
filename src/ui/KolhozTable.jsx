@@ -9,6 +9,24 @@ const kolhozCellStyle = {
   fontSize: "12px",
 };
 
+// "Ваня → Сергей → Антон → Ваня": each player pots against the next one.
+export function KolhozChain({ order, nameById, playerColor, size = 13, light = false }) {
+  if (!order || order.length < 2) return null;
+  const arrow = { opacity: 0.55, margin: "0 5px", fontWeight: 700 };
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", rowGap: "4px", fontSize: `${size}px`, color: light ? "#F3EBDA" : undefined }}>
+      {[...order, order[0]].map((pid, i) => (
+        <React.Fragment key={`${pid}-${i}`}>
+          {i > 0 && <span style={arrow}>→</span>}
+          <span style={{ whiteSpace: "nowrap", fontWeight: 600, opacity: i === order.length ? 0.6 : 1 }}>
+            <PlayerBall color={playerColor(pid)} size={size - 2} /> {nameById(pid)}
+          </span>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
 export function KolhozTable({ participants, settlement, nameById, playerColor }) {
   if (!settlement) return null;
   return (

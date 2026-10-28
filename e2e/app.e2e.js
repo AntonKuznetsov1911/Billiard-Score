@@ -48,8 +48,8 @@ test("first run: onboarding, add players, play, undo, finish, persists", async (
   await page.getByRole("button", { name: "Добавить: Игорь" }).click();
   const undo = page.getByRole("button", { name: /Отменить последнее действие/ });
   await undo.click();
-  await expect.poll(async () => (await stored(page))?.activeGame?.undone?.length).toBe(1);
-  const game = (await stored(page)).activeGame;
+  await expect.poll(async () => (await stored(page))?.activeGames?.[0]?.undone?.length).toBe(1);
+  const game = (await stored(page)).activeGames[0];
   expect(Object.values(game.scores).sort()).toEqual([0, 2]);
 
   await page.reload();
@@ -135,4 +135,76 @@ test("wipe device data needs the confirmation word", async ({ page }) => {
   await page.getByRole("button", { name: "Удалить мои данные с устройства" }).click();
   await expect(page.getByText("Во что будете играть?")).toBeVisible();
   expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("billiards-")))).toEqual([]);
+});
+
+const four = [
+  { id: "p1", name: "Антон", color: "#E4032E" },
+  { id: "p2", name: "Игорь", color: "#0057B8" },
+  { id: "p3", name: "Сергей", color: "#F0B429" },
+  { id: "p4", name: "Ваня", color: "#5B2C82" },
+];
+
+test("two games at once: each table keeps its own score", async ({ page }) => {
+  await seed(page, base({ players: four }));
+  await openGame(page);
+  await page.getByRole("button", { name: "Антон", exact: true }).click();
+  await page.getByRole("button", { name: "Игорь", exact: true }).click();
+  await page.getByRole("button", { name: "Начать партию" }).click();
+  await page.getByRole("button", { name: "Добавить: Антон" }).click();
+
+  await page.getByRole("button", { name: /Новая партия за другим столом/ }).click();
+  // players at the first table can't be picked again
+  await expect(page.getByRole("button", { name: /Антон · за столом/ })).toBeDisabled();
+  await page.getByRole("button", { name: "Сергей", exact: true }).click();
+  await page.getByRole("button", { name: "Ваня", exact: true }).click();
+  await page.getByRole("button", { name: "Начать партию" }).click();
+  await page.getByRole("button", { name: "Добавить: Ваня" }).click();
+  await page.waitForTimeout(120);
+  await page.getByRole("button", { name: "Добавить: Ваня" }).click();
+
+  await expect.poll(async () => (await stored(page)).activeGames.length).toBe(2);
+  await page.getByRole("button", { name: /Все партии \(2\)/ }).click();
+  await page.getByRole("button", { name: /Открыть партию: Антон, Игорь/ }).click();
+  await expect.poll(() => scores(page)).toEqual(["1", "0"]);
+  await page.getByRole("button", { name: "Завершить партию" }).click();
+  await page.getByRole("button", { name: /К рейтингу/ }).click();
+  const s = await stored(page);
+  expect(s.matches).toHaveLength(1);
+  expect(s.activeGames).toHaveLength(1);
+  expect(s.activeGames[0].scores).toEqual({ p3: 0, p4: 2 });
+});
+
+test("kolhoz: rounds with position change and money", async ({ page }) => {
+  await seed(page, base({ players: four.slice(0, 3).concat(four[3]), russianMode: "kolhoz" }));
+  await openGame(page);
+  for (const n of ["Ваня", "Сергей", "Антон"]) await page.getByRole("button", { name: n, exact: true }).click();
+  await page.getByRole("button", { name: "Шарами (каждый = 1)" }).click();
+  await page.getByLabel("Ставка, рублей").fill("200");
+  await page.getByRole("button", { name: "Начать партию" }).click();
+
+  await page.getByRole("button", { name: "Добавить: Ваня" }).click();
+  await page.waitForTimeout(120);
+  await page.getByRole("button", { name: "Добавить: Ваня" }).click();
+  await page.getByRole("button", { name: /Смена позиций/ }).click();
+  await page.getByRole("button", { name: "Начать круг 2" }).click();
+  await expect.poll(async () => (await stored(page))?.activeGames?.[0]?.kolhoz?.rounds?.length).toBe(1);
+  expect((await stored(page)).activeGames[0].kolhoz.order).toEqual(["p4", "p1", "p3"]);
+  await expect.poll(() => scores(page)).toEqual(["0", "0", "0"]);
+
+  await page.getByRole("button", { name: "Завершить партию" }).click();
+  await expect(page.getByText("Сергей → Ваня")).toBeVisible();
+  await expect(page.getByText(/400\s₽/).first()).toBeVisible();
+  await page.getByRole("button", { name: /К рейтингу/ }).click();
+  const m = (await stored(page)).matches[0];
+  expect(m.stake).toBe(200);
+  expect(m.kolhozNet).toEqual({ p4: 2, p3: -2, p1: 0 });
+});
+
+test("feedback form is in the «Ещё» tab", async ({ page }) => {
+  await seed(page, base());
+  await openGame(page);
+  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await expect(page.getByRole("heading", { name: /Предложения и ошибки/ })).toBeVisible();
+  await page.getByRole("button", { name: "Отправить" }).click();
+  await expect(page.getByText("Напишите хотя бы пару слов")).toBeVisible();
 });

@@ -1,7 +1,9 @@
 // Telegram Mini App helpers; everything no-ops outside Telegram.
 export function getTG() {
   try {
-    if (typeof window !== "undefined" && window.Telegram && window.Telegram.WebApp) {
+    // The script defines Telegram.WebApp in any browser; initData is only
+    // filled in when the app is really opened from Telegram.
+    if (typeof window !== "undefined" && window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
       return window.Telegram.WebApp;
     }
   } catch (e) {

@@ -11,7 +11,8 @@ const chunkKey = (i) => `bs_chunk_${i}`;
 function getCloud() {
   if (typeof window === "undefined") return null;
   const tg = window.Telegram && window.Telegram.WebApp;
-  return tg && tg.CloudStorage ? tg.CloudStorage : null;
+  if (!tg || !tg.initData || !tg.CloudStorage) return null;
+  return typeof tg.isVersionAtLeast !== "function" || tg.isVersionAtLeast("6.9") ? tg.CloudStorage : null;
 }
 
 function csSetItem(cloud, key, value) {
