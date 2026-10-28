@@ -73,21 +73,31 @@ create table if not exists app_usage (
   primary key (device_id, day)
 );
 create index if not exists app_usage_day on app_usage (day);
+alter table app_usage add column if not exists created_at timestamptz not null default now();
+create index if not exists app_usage_created on app_usage (created_at);
 
 -- Политик нет: читать таблицу через API нельзя никому, писать — только функцией ниже.
 alter table app_usage enable row level security;
 
+-- The device id comes from the caller, so anyone with the public key could
+-- send made-up ones: past 60 new records a minute the extra ones are ignored,
+-- which bounds both inflated numbers and storage.
 create or replace function public.ping_app(p_device uuid, p_platform text, p_version text default null)
 returns void
-language sql
+language plpgsql
 security definer
 set search_path = public
 as $$
+begin
+  if (select count(*) from app_usage where created_at > now() - interval '1 minute') >= 60 then
+    return;
+  end if;
   insert into app_usage (device_id, platform, app_version)
   values (p_device,
           case when p_platform in ('android', 'ios', 'pwa', 'web') then p_platform else 'web' end,
           left(p_version, 40))
   on conflict (device_id, day) do nothing;
+end;
 $$;
 
 revoke all on function public.ping_app(uuid, text, text) from public;
@@ -143,6 +153,6 @@ revoke all on function public.send_daily_report() from public, anon, authenticat
 select cron.unschedule(jobid) from cron.job where jobname = 'billiard-daily-report';
 select cron.schedule('billiard-daily-report', '0 6 * * *', 'select public.send_daily_report()');
 
--- Удалять записи статистики старше 400 дней (раз в неделю).
+-- Статистика хранится не дольше 400 дней: каждую ночь удаляется всё старше 395 дней.
 select cron.unschedule(jobid) from cron.job where jobname = 'billiard-usage-cleanup';
-select cron.schedule('billiard-usage-cleanup', '30 3 * * 0', $$delete from app_usage where day < current_date - 400$$);
+select cron.schedule('billiard-usage-cleanup', '30 3 * * *', $$delete from app_usage where day < current_date - 395$$);
