@@ -1,4 +1,7 @@
 // Telegram Mini App helpers; everything no-ops outside Telegram.
+// The Telegram WebApp script isn't loaded any more (the Mini App isn't used),
+// so these stay dormant; to bring the Mini App back, add
+// <script src="https://telegram.org/js/telegram-web-app.js"></script> to index.html.
 export function getTG() {
   try {
     // The script defines Telegram.WebApp in any browser; initData is only
