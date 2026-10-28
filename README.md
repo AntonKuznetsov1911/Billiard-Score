@@ -69,7 +69,7 @@ npm run build
 3. Скопируйте `.env.example` в `.env` и заполните `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY` (Settings → API → `anon public`, **не** `service_role`) — для локальной разработки. Для GitHub Pages добавьте те же два значения как секреты репозитория (`Settings → Secrets and variables → Actions`) с именами `VITE_SUPABASE_URL` и `VITE_SUPABASE_ANON_KEY` — workflow деплоя уже их подхватывает.
 4. Без этих значений раздел «Общий доступ» в приложении просто не отображается — остальной функционал не затронут.
 5. Также выполните `supabase/security.sql` (ограничение на подбор кода клуба) и `supabase/feedback.sql` (раздел «Предложения и ошибки»; сообщения читаются в Supabase → Table Editor → `feedback`).
-6. Уведомления в Telegram о новых отзывах и ежедневная сводка по пользователям — `supabase/telegram.sql` (инструкция внутри файла; токен бота хранится в Supabase Vault). Сводку можно посмотреть и вручную: `select * from usage_stats();`.
+6. Уведомления в Telegram о новых отзывах и ежедневная сводка по пользователям — `supabase/telegram.sql` (инструкция внутри файла; токен бота хранится в Supabase Vault). Сводку можно посмотреть и вручную: `select * from usage_stats();`. Команда `/stats` и кнопка «📊 Статистика» в боте — `supabase/telegram_bot.sql`.
 7. Если `*.supabase.co` у пользователей недоступен без VPN — см. `proxy/README.md` (свой домен-прокси).
 
 Вход — по email-ссылке (magic link), без пароля. Один игрок создаёт клуб и получает короткий код, остальные вводят его один раз, чтобы присоединиться. Пока открыт клуб, все партии синхронизируются между участниками через Supabase Realtime.
