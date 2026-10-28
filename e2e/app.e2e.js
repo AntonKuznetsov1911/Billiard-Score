@@ -220,3 +220,16 @@ test("«Ещё» shows how to install the app and a share button", async ({ page
   await expect(page.getByText(/Установить приложение» или «Добавить на главный экран/)).toBeVisible();
   await expect(page.getByRole("button", { name: /Поделиться ссылкой/ })).toBeVisible();
 });
+
+test("a safety copy can be deleted; the data section is named plainly", async ({ page }) => {
+  await seed(page, base({ matches: [{ id: "m1", date: "2024-05-01T10:00:00Z", participants: ["p1", "p2"], scores: { p1: 8, p2: 3 }, winnerId: "p1", gameType: "russian" }] }));
+  await openGame(page);
+  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await expect(page.getByRole("heading", { name: "Удаление данных" })).toBeVisible();
+  const copies = () => page.evaluate(() => JSON.parse(localStorage.getItem("billiards-safety-copies") || "[]").length);
+  await expect.poll(copies).toBe(1); // automatic copy on start
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: /Удалить копию от/ }).click();
+  await expect.poll(copies).toBe(0);
+  await expect(page.getByText("Пока нет копий.")).toBeVisible();
+});

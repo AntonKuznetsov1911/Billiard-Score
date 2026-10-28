@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { listSafetyCopies, saveSafetyCopy, maybeAutoSafetyCopy } from "./safety.js";
+import { listSafetyCopies, saveSafetyCopy, maybeAutoSafetyCopy, deleteSafetyCopy } from "./safety.js";
 
 const fake = (limit = Infinity) => {
   const m = {};
@@ -46,5 +46,21 @@ describe("safety copies", () => {
     const s = fake();
     s.setItem("billiards-safety-copies", "{not json");
     expect(listSafetyCopies(s)).toEqual([]);
+  });
+});
+
+describe("deleting a safety copy", () => {
+  it("removes only the chosen copy", () => {
+    const s = fake();
+    saveSafetyCopy(s, data(1), "a", 1000);
+    saveSafetyCopy(s, data(2), "b", 2000);
+    expect(deleteSafetyCopy(s, 1000)).toBe(true);
+    expect(listSafetyCopies(s).map((c) => c.ts)).toEqual([2000]);
+    expect(deleteSafetyCopy(s, 12345)).toBe(false);
+  });
+  it("a copy doesn't carry running games", () => {
+    const s = fake();
+    saveSafetyCopy(s, { ...data(1), activeGames: [{ id: "g" }] }, "x", 1);
+    expect(listSafetyCopies(s)[0].data.activeGames).toEqual([]);
   });
 });
