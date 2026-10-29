@@ -199,7 +199,7 @@ test("kolhoz: rounds with position change, points by ball value", async ({ page 
   await page.getByRole("button", { name: /К рейтингу/ }).click();
   const m = (await stored(page)).matches[0];
   expect(m).not.toHaveProperty("stake");
-  expect(m.kolhozNet).toEqual({ p4: 6, p3: -6, p1: 0 });
+  expect(m.kolhozNet).toEqual({ p4: 6, p1: -6, p3: 0 }); // Ваня забивал Антону
 });
 
 test("feedback form is in the «Ещё» tab", async ({ page }) => {

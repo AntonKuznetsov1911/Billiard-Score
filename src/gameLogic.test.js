@@ -729,36 +729,37 @@ describe("parallel games", () => {
 });
 
 describe("kolhoz rounds", () => {
-  // Ваня → Сергей → Антон → Ваня
+  // Порядок Ваня, Сергей, Антон: Ваня забивает Антону, Антон — Сергею, Сергей — Ване
   const start = () =>
     normalizeData({ activeGames: [{ id: "k", participants: ["v", "s", "a"], events: [], kolhoz: { order: ["v", "s", "a"], rounds: [] } }] }).activeGames[0];
   const pts = (game, id, pid, d, ts) => addGameEvent(game, { id, pid, d, ts });
 
-  it("each player wins from the next one in the circle", () => {
-    expect(kolhozVictim(["v", "s", "a"], "v")).toBe("s");
-    expect(kolhozVictim(["v", "s", "a"], "a")).toBe("v");
+  it("each player wins from the previous one in the circle", () => {
+    expect(kolhozVictim(["a", "s", "v"], "a")).toBe("v"); // Антон забивает Ване
+    expect(kolhozVictim(["a", "s", "v"], "v")).toBe("s"); // Ваня — Сергею
+    expect(kolhozVictim(["a", "s", "v"], "s")).toBe("a"); // Сергей — Антону
     let g = pts(pts(start(), "1", "v", 10, 1), "2", "s", 4, 2);
     const set = kolhozSettlement(g.participants, kolhozAllRounds(g));
-    expect(set.v.s).toBe(10); // Сергей должен Ване 10
-    expect(set.s.v).toBe(-10);
-    expect(set.s.a).toBe(4);
-    expect(set.a.v).toBe(0);
-    expect(kolhozNet(set)).toEqual({ v: 10, s: -6, a: -4 });
+    expect(set.v.a).toBe(10); // Антон должен Ване 10
+    expect(set.a.v).toBe(-10);
+    expect(set.s.v).toBe(4);
+    expect(set.a.s).toBe(0);
+    expect(kolhozNet(set)).toEqual({ v: 6, s: 4, a: -10 });
   });
 
   it("changing positions freezes the round and starts scoring from zero", () => {
     let g = pts(start(), "1", "v", 10, 1);
     const next = kolhozSuggestOrder(g.kolhoz.order);
-    expect(next).toEqual(["v", "a", "s"]); // теперь Ваня забивает Антону
+    expect(next).toEqual(["v", "a", "s"]); // теперь Ваня забивает Сергею
     g = startKolhozRound(g, next);
     expect(g.scores).toEqual({ v: 0, s: 0, a: 0 });
     expect(g.kolhoz.rounds).toHaveLength(1);
     g = pts(g, "2", "v", 3, 2);
     expect(g.events[1].r).toBe(1);
     const set = kolhozSettlement(g.participants, kolhozAllRounds(g));
-    expect(set.v).toEqual({ s: 10, a: 3 });
+    expect(set.v).toEqual({ s: 3, a: 10 });
     expect(kolhozGross(g.participants, kolhozAllRounds(g))).toEqual({ v: 13, s: 0, a: 0 });
-    expect(gameStandings(g)).toEqual({ v: 13, s: -10, a: -3 });
+    expect(gameStandings(g)).toEqual({ v: 13, s: -3, a: -10 });
   });
 
   it("undo only touches the current round", () => {

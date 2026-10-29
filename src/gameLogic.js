@@ -770,15 +770,15 @@ export function buildKolhozSettlement(participants, scores) {
 }
 
 // ---------------------------------------------------------------------------
-// Kolhoz: players sit in a circle and each one pots "against" the next one
-// (order [Ваня, Сергей, Антон] → Ваня забивает Сергею, Сергей — Антону,
-// Антон — Ване). After a round the positions are changed and scoring goes on
+// Kolhoz: players sit in a circle and each one pots "against" the previous one
+// (order [Антон, Сергей, Ваня] → Антон забивает Ване, Ваня — Сергею,
+// Сергей — Антону). After a round the positions are changed and scoring goes on
 // in the new order; the pair results add up over all rounds.
 // ---------------------------------------------------------------------------
 
 export function kolhozVictim(order, pid) {
   const i = order.indexOf(pid);
-  return i < 0 || order.length < 2 ? null : order[(i + 1) % order.length];
+  return i < 0 || order.length < 2 ? null : order[(i - 1 + order.length) % order.length];
 }
 
 // The same circle read the other way round — for three players the only
