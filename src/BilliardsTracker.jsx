@@ -1988,7 +1988,7 @@ export default function BilliardsTracker() {
                           ? `${RUSSIAN_MODES[data.russianMode || "free"].name} · до ${
                               RUSSIAN_MODES[data.russianMode || "free"].target
                             } ${RUSSIAN_MODES[data.russianMode || "free"].unit}`
-                          : `${RUSSIAN_MODES[data.russianMode || "free"].name} · каждый забивает следующему по кругу, позиции меняются после каждого круга`}
+                          : `${RUSSIAN_MODES[data.russianMode || "free"].name} · каждый забивает предыдущему по кругу (первый — последнему), позиции меняются после каждого круга`}
                       </p>
                       {isKolhoz && selected.length === 1 && (
                         <p style={{ ...styles.hint, color: COLORS.danger }}>Нужно минимум 2 игрока</p>
@@ -2386,7 +2386,7 @@ export default function BilliardsTracker() {
                       </div>
                       <p style={styles.fsHint}>
                         {kolhoz
-                          ? `Тапните по зоне игрока, который забил, — +${isPoints ? `${step} очк.` : "1 шар"}. Круг ${roundNo}: каждый забивает следующему.`
+                          ? `Тапните по зоне игрока, который забил, — +${isPoints ? `${step} очк.` : "1 шар"}. Круг ${roundNo}: каждый забивает предыдущему.`
                           : `Тапните по своей половине экрана, чтобы добавить ${isPoints ? `${step} очк.` : "шар"}`}
                       </p>
                     </div>
@@ -3626,7 +3626,7 @@ export default function BilliardsTracker() {
               </>
             )}
             <p style={styles.modalHint}>
-              Новый порядок — каждый забивает следующему. Нажмите на двух игроков, чтобы поменять их местами.
+              Новый порядок — каждый забивает предыдущему (первый — последнему). Нажмите на двух игроков, чтобы поменять их местами.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", margin: "8px 0" }}>
               {kolhozDraft.order.map((pid, i) => (
