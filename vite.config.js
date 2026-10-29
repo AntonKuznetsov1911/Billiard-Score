@@ -64,7 +64,7 @@ export default defineConfig(({ mode }) => {
           // Everything the app needs (fonts included) is
           // served from its own origin and precached, so it starts without
           // reaching any third-party host — with or without a VPN.
-          globPatterns: ["**/*.{js,css,html,png,svg,ico,woff2}"],
+          globPatterns: ["**/*.{js,css,html,png,svg,ico,woff2,webp}"],
         },
       }),
     ],
