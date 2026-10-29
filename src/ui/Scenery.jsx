@@ -1,10 +1,35 @@
 // Background scenery: the table photo, discipline gate and confetti.
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { COLORS } from "../constants.js";
 import { GameIcon } from "./icons.jsx";
-import tableRussianPhoto from "../assets/table-russian.jpg";
-import tablePoolPhoto from "../assets/table-pool.jpg";
-import tableOffPhoto from "../assets/table-off.jpg";
+import tableRussianPhoto from "../assets/table-russian.webp";
+import tablePoolPhoto from "../assets/table-pool.webp";
+import tableOffPhoto from "../assets/table-off.webp";
+
+// Photos start downloading and decoding as soon as this module loads, so the
+// first frame of the table is drawn whole instead of filling in line by line.
+const photoReady = {};
+const photoWaiters = new Set();
+[tableOffPhoto, tableRussianPhoto, tablePoolPhoto].forEach((src) => {
+  if (typeof Image === "undefined") return;
+  const img = new Image();
+  img.src = src;
+  const done = () => {
+    photoReady[src] = true;
+    photoWaiters.forEach((fn) => fn());
+  };
+  (img.decode ? img.decode() : Promise.reject()).then(done, () => (img.complete ? done() : (img.onload = img.onerror = done)));
+});
+
+function usePhotosReady() {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const fn = () => bump((n) => n + 1);
+    photoWaiters.add(fn);
+    return () => photoWaiters.delete(fn);
+  }, []);
+  return photoReady;
+}
 
 export function Confetti({ active }) {
   const pieces = useMemo(
@@ -107,6 +132,7 @@ const DARK_SPOT_MASK = [
 
 export function TableArt({ gameType, lit, dark }) {
   const isPool = gameType === "pool";
+  const ready = usePhotosReady();
   // Light theme: the photo a touch brighter and livelier; dark theme: only
   // the lamp-lit spot shows. Transitions so switching themes is smooth.
   const photoFilter = dark ? "brightness(0.95) saturate(0.95)" : "brightness(1.12) saturate(1.12)";
@@ -117,8 +143,11 @@ export function TableArt({ gameType, lit, dark }) {
     backgroundPosition: "center 42%",
     transition: "opacity 0.6s ease, filter 0.5s ease",
     filter: photoFilter,
-    animation: "tableKenBurns 22s ease-in-out infinite alternate",
   };
+  // A layer shows once its photo is decoded. The slow zoom runs on one wrapper
+  // around all three photos, so a weak phone isn't animating three full-screen
+  // layers at once.
+  const layer = (src, on) => <div style={{ ...layerStyle, backgroundImage: `url(${src})`, opacity: on && ready[src] ? 1 : 0 }} />;
   const maskStyle = dark ? { maskImage: DARK_SPOT_MASK, WebkitMaskImage: DARK_SPOT_MASK } : {};
 
   return (
@@ -126,9 +155,11 @@ export function TableArt({ gameType, lit, dark }) {
       {/* real table photos: a dim "lights off" shot by default, cross-fading
           to the lit russian/pool shot once a discipline is picked */}
       <div style={{ position: "absolute", inset: 0, ...maskStyle }}>
-        <div style={{ ...layerStyle, backgroundImage: `url(${tableOffPhoto})`, opacity: lit ? 0 : 1 }} />
-        <div style={{ ...layerStyle, backgroundImage: `url(${tableRussianPhoto})`, opacity: lit && !isPool ? 1 : 0 }} />
-        <div style={{ ...layerStyle, backgroundImage: `url(${tablePoolPhoto})`, opacity: lit && isPool ? 1 : 0 }} />
+        <div style={{ position: "absolute", inset: 0, animation: "tableKenBurns 22s ease-in-out infinite alternate" }}>
+          {layer(tableOffPhoto, !lit)}
+          {layer(tableRussianPhoto, lit && !isPool)}
+          {layer(tablePoolPhoto, lit && isPool)}
+        </div>
       </div>
       {dark && (
         // warm cone of light falling from the lamp onto the table
