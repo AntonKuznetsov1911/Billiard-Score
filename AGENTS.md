@@ -18,3 +18,5 @@ React/Vite приложение, web/PWA и Capacitor Android/iOS. Основн�
 src/native.js — системная отправка файлов/текста, печать и жизненный цикл. NativePrintPlugin — Android-печать. Ключи подписи, .env и локальные SDK/пароли не добавлять в Git. Публикация магазина и изменение живой базы — отдельные действия после подготовки и проверки.
 
 Текущий статус и оставшиеся проверки: docs/ANDROID_RELEASE.md.
+
+Google-вход Android (1.1.1): src/nativeAuth.js, PKCE, точный callback io.github.antonkuznetsov1911.billiard://auth/callback; Supabase allowlist настроен. Не принимать токены из URL и не выводить код/токены в логи. Подробности в docs/ANDROID_RELEASE.md.

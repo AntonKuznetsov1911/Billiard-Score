@@ -1,3 +1,4 @@
+import { isNativeApp } from "./native.js";
 import { createClient } from "@supabase/supabase-js";
 
 const url = import.meta.env.VITE_SUPABASE_URL;
@@ -24,6 +25,7 @@ export const supabase =
   url && anonKey
     ? createClient(url, anonKey, {
         global: { fetch: (input, init) => fetchWithTimeout(input, init) },
+        ...(isNativeApp() ? { auth: { flowType: "pkce", detectSessionInUrl: false, persistSession: true, autoRefreshToken: true } } : {}),
       })
     : null;
 

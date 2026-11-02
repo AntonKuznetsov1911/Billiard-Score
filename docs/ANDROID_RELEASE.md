@@ -59,3 +59,15 @@ GitHub Actions «Android build» строит APK; при наличии сек�
 - https://developer.android.com/google/play/requirements/target-sdk
 - https://developer.android.com/studio/publish/app-signing
 - https://support.google.com/googleplay/android-developer/answer/14151465
+
+
+## Обновление 1.1.1 — Google-вход
+
+versionCode 3, тот же package ID и ключ подписи: устанавливается поверх 1.1.0.
+Кнопка Google снова доступна в Android. Вход открывается через Capacitor Browser, Supabase использует PKCE; код обменивается на сессию внутри приложения. Обработаны appUrlOpen и холодный запуск через getLaunchUrl, повторные и посторонние callback, отказ пользователя и истечение времени. Токены из URL не принимаются и не журналируются.
+
+В Supabase проекта zvbkgukuivojaxzyqaii добавлен точный Redirect URL:
+io.github.antonkuznetsov1911.billiard://auth/callback
+Провайдер Google уже был включен. Site URL и веб-redirect сохранены. Клиентские секреты Google не менялись.
+
+После установки обновления: «Ещё» → «Войти через Google», выбрать аккаунт в браузере, подтвердить возврат в приложение, проверить появление своего email/клуба. Реальный вход пользователя на телефоне после обновления пока не подтвержден.

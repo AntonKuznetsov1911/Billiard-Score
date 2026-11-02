@@ -7,6 +7,7 @@ import {
   verifyEmailOtp,
   signInWithGoogle,
   onAuthChange,
+  onNativeAuthReturn,
   getSession,
   signOut as clubSignOut,
   deleteMyAccount,
@@ -376,11 +377,17 @@ export default function BilliardsTracker() {
     })();
     const unsubscribe = onAuthChange((session) => {
       setAuthSession(session);
+      if (session) { setAuthStatus("idle"); setAuthError(""); }
       if (!session) setClub(null);
+    });
+    const stopNativeAuth = onNativeAuthReturn({
+      onSuccess: () => { setAuthStatus("idle"); setAuthError(""); },
+      onError: (error) => { setAuthStatus("error"); setAuthError(error.message); setTab("settings"); },
     });
     return () => {
       active = false;
       unsubscribe();
+      stopNativeAuth();
     };
   }, []);
 
@@ -1293,6 +1300,7 @@ export default function BilliardsTracker() {
     setAuthError("");
     try {
       await signInWithGoogle();
+      if (isNativeApp()) setAuthStatus("idle");
     } catch (e) {
       setAuthStatus("error");
       setAuthError(e.message || "Не удалось войти через Google");
@@ -3069,14 +3077,10 @@ export default function BilliardsTracker() {
                         </>
                       )}
                       {authStatus === "error" && <p style={{ ...styles.hint, color: COLORS.danger }}>{authError}</p>}
-                      {!isNativeApp() && (
-                        <>
-                          <p style={{ ...styles.hint, margin: "12px 0 6px" }}>или</p>
-                          <button style={{ ...styles.diceBtn, width: "100%" }} onClick={handleGoogleSignIn} disabled={authStatus === "sending"}>
-                            Войти через Google
-                          </button>
-                        </>
-                      )}
+                      <p style={{ ...styles.hint, margin: "12px 0 6px" }}>или</p>
+                      <button style={{ ...styles.diceBtn, width: "100%" }} onClick={handleGoogleSignIn} disabled={authStatus === "sending"}>
+                        Войти через Google
+                      </button>
                     </>
                   )}
                   {authSession && !club && (

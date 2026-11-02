@@ -1,3 +1,5 @@
+import { isNativeApp } from "./native.js";
+import { startNativeGoogleSignIn, listenForNativeGoogleSignIn } from "./nativeAuth.js";
 import { supabase } from "./supabaseClient.js";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I — easy to read aloud
@@ -34,11 +36,16 @@ export async function verifyEmailOtp(email, token) {
 
 export async function signInWithGoogle() {
   const client = requireClient();
+  if (isNativeApp()) return startNativeGoogleSignIn(client);
   const { error } = await client.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo: window.location.href },
   });
   if (error) throw error;
+}
+
+export function onNativeAuthReturn(callbacks) {
+  return listenForNativeGoogleSignIn(supabase, callbacks);
 }
 
 export function onAuthChange(callback) {
