@@ -18,6 +18,7 @@ export function loadInitial() {
     deletedPlayers: [],
     endedGames: [],
     metaAt: 0,
+    restoreAt: 0,
     updatedAt: 0,
   };
 }
@@ -180,7 +181,9 @@ export function restoreMatchFromTrash(data, matchId) {
   };
 }
 
-const EVENT_LIMIT = 3000;
+// Keep complete score logs. Never silently drop events: a full log is reported
+// to the UI so the user can finish the game or export a backup.
+export const EVENT_LIMIT = 20000;
 const ENDED_LIMIT = 100;
 const TOMBSTONE_LIMIT = 1000;
 const cleanIds = (v, limit) =>
@@ -255,10 +258,9 @@ function withScores(g) {
 // actually lost events to the cap (kolhoz then trusts that round's snapshot).
 // -1 means nothing was dropped.
 function capEvents(trimmedRound, events) {
-  const prev = typeof trimmedRound === "number" && trimmedRound >= 0 ? trimmedRound : -1;
-  if (events.length <= EVENT_LIMIT) return { events, trimmedRound: prev };
-  const dropped = events.slice(0, events.length - EVENT_LIMIT);
-  return { events: events.slice(-EVENT_LIMIT), trimmedRound: Math.max(prev, ...dropped.map((e) => e.r || 0)) };
+  // Preserve every event, including unions received from offline devices.
+  // Only local additions are limited; pruning a shared log loses scores.
+  return { events, trimmedRound: typeof trimmedRound === "number" && trimmedRound >= 0 ? trimmedRound : -1 };
 }
 
 // Games saved before the marker existed don't say whether their full log was
@@ -266,12 +268,17 @@ function capEvents(trimmedRound, events) {
 function cleanTrimmedRound(v, events) {
   const n = cleanInt(v, -1, 1000);
   if (n !== null) return n;
-  return events.length >= EVENT_LIMIT ? Math.min(...events.map((e) => e.r || 0)) : -1;
+  return events.length >= 3000 ? Math.min(...events.map((e) => e.r || 0)) : -1;
 }
 
 export function addGameEvent(g, event) {
   const e = sanitizeEvent(g && currentRound(g) ? { ...event, r: currentRound(g) } : event);
   if (!g || !e) return g;
+  if ((g.events || []).length >= EVENT_LIMIT) {
+    const error = new Error("Достигнут предел действий в партии. Завершите её и начните новую — счёт сохранён.");
+    error.code = "GAME_EVENT_LIMIT";
+    throw error;
+  }
   return withScores({ ...g, ...capEvents(g.trimmedRound, [...(g.events || []), e]) });
 }
 
@@ -319,7 +326,7 @@ function sanitizeActiveGame(g) {
     participants,
     // Games saved before the event log existed start from their stored score.
     baseScores: cleanScores(legacy ? g.scores : g.baseScores),
-    events: legacy ? [] : g.events.map(sanitizeEvent).filter(Boolean).slice(-EVENT_LIMIT),
+    events: legacy ? [] : g.events.map(sanitizeEvent).filter(Boolean),
     undone: cleanIds(g.undone, EVENT_LIMIT),
     gameType: cleanGameType(g.gameType),
     mode: cleanMode(g.mode),
@@ -372,6 +379,7 @@ export function normalizeData(input) {
     deletedPlayers: cleanTombstones(parsed.deletedPlayers),
     endedGames,
     metaAt: cleanStamp(parsed.metaAt),
+    restoreAt: cleanStamp(parsed.restoreAt),
     updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
   };
 }
@@ -388,7 +396,7 @@ const META_KEYS = ["activeSeries", "activeBracket", "theme", "gameType", "russia
 // see who recorded, edited or removed what.
 export function stampChanges(prev, next, now = Date.now(), by = "") {
   if (!prev || !next || prev === next) return next;
-  let out = next;
+  let out = { ...next, restoreAt: Math.max(cleanStamp(prev.restoreAt), cleanStamp(next.restoreAt)) };
   const author = typeof by === "string" ? by.slice(0, 40) : "";
   const stampList = (key, withAuthor) => {
     if (next[key] === prev[key]) return;
@@ -480,6 +488,11 @@ function mergeGameLists(newer, older, ended) {
 export function mergeData(a, b) {
   if (!a) return b;
   if (!b) return a;
+  // A deliberate restore starts a new generation. Stale devices must not
+  // resurrect records excluded from that snapshot.
+  if (cleanStamp(a.restoreAt) !== cleanStamp(b.restoreAt)) {
+    return cleanStamp(a.restoreAt) > cleanStamp(b.restoreAt) ? a : b;
+  }
   // "newer" only breaks ties; otherwise every record is decided on its own.
   const bNewer = (b.updatedAt || 0) > (a.updatedAt || 0);
   const older = bNewer ? a : b;
@@ -539,6 +552,31 @@ export function mergeData(a, b) {
     metaAt: Math.max(cleanStamp(older.metaAt), cleanStamp(newer.metaAt)),
     updatedAt: Math.max(older.updatedAt || 0, newer.updatedAt || 0),
   };
+}
+
+// A restore replaces a dataset, unlike a normal merge of independent edits.
+export function restoreSnapshot(previous, snapshot, now = Date.now()) {
+  const restored = normalizeData(snapshot);
+  const at = Math.max(now, cleanStamp(previous.restoreAt) + 1);
+  return { ...stampChanges(previous, restored, at), restoreAt: at, updatedAt: at };
+}
+
+export function editCompletedMatch(match, scores, rounds = null) {
+  const kolhozRounds = match.kolhozRounds ? cleanKolhozRounds(rounds || match.kolhozRounds) : null;
+  const finalScores = kolhozRounds ? kolhozGross(match.participants, kolhozRounds) : cleanScores(scores);
+  const settlement = kolhozRounds ? kolhozSettlement(match.participants, kolhozRounds)
+    : match.mode === "kolhoz" && !match.solo ? buildKolhozSettlement(match.participants, finalScores) : match.settlement;
+  const net = kolhozRounds ? kolhozNet(settlement) : null;
+  const standing = net || finalScores;
+  const max = Math.max(...match.participants.map((pid) => standing[pid] || 0));
+  const leaders = match.participants.filter((pid) => (standing[pid] || 0) === max);
+  const winnerId = match.solo ? match.winnerId : leaders.includes(match.winnerId) ? match.winnerId : leaders[0];
+  return { ...match, scores: finalScores, winnerId, settlement,
+    ...(kolhozRounds ? { kolhozRounds, kolhozNet: net } : {}) };
+}
+
+export function resultIdForGame(gameId) {
+  return `result-${gameId}`;
 }
 
 export function formatDuration(ms) {

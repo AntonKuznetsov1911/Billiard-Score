@@ -1,3 +1,4 @@
+import { cacheAcceptedState as cacheLocalState } from "./localCache.js";
 import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from "react";
 import { saveToCloud, loadFromCloud, clearCloud } from "./cloudSync.js";
 import { isCloudConfigured } from "./supabaseClient.js";
@@ -27,6 +28,10 @@ import {
   uid,
   loadInitial,
   normalizeData,
+  restoreSnapshot,
+  resultIdForGame,
+  editCompletedMatch,
+  EVENT_LIMIT,
   mergeData,
   stampChanges,
   addGameEvent,
@@ -65,7 +70,7 @@ import {
 } from "./gameLogic.js";
 import { FeedbackCard } from "./FeedbackCard.jsx";
 import { InstallCard } from "./InstallCard.jsx";
-import { isNativeApp } from "./native.js";
+import { isNativeApp, exportTextFile, shareText, listenToNativeApp, minimizeNativeApp, printReport } from "./native.js";
 import { buildCsv } from "./csv.js";
 import { getTG, haptic } from "./telegram.js";
 import { makeStyles } from "./styles.js";
@@ -126,6 +131,14 @@ const writeLocal = (key, value) => {
 
 // Club state written by any member is untrusted — sanitize before merging.
 const mergeWithRemote = (local, remoteRaw) => mergeData(local, normalizeData(remoteRaw));
+const cacheAcceptedState = (state) => {
+  try {
+    cacheLocalState(window.localStorage, STORAGE_KEY, state);
+  } catch (e) {
+    window.alert("Не удалось сохранить данные на устройстве. Освободите место и скачайте резервную копию перед закрытием приложения.");
+  }
+  return state;
+};
 
 export default function BilliardsTracker() {
   const [data, setData] = useState(loadInitial());
@@ -403,7 +416,7 @@ export default function BilliardsTracker() {
           } catch (e) {
             // storage unavailable
           }
-          setData((prev) => (synced === club.id ? mergeData(prev, remoteData) : remoteData));
+          setData((prev) => cacheAcceptedState(synced === club.id ? mergeData(prev, remoteData) : remoteData));
           setClubSync("synced");
           try {
             window.localStorage.setItem(CLUB_SYNCED_KEY, club.id);
@@ -419,7 +432,7 @@ export default function BilliardsTracker() {
       // Merge rather than replace: another member's taps/matches are added to
       // ours, and an old echo of our own earlier push changes nothing (so the
       // score can't roll back and forth).
-      if (remoteData) setData((prev) => mergeWithRemote(prev, remoteData));
+      if (remoteData) setData((prev) => cacheAcceptedState(mergeWithRemote(prev, remoteData)));
     });
     return () => {
       active = false;
@@ -488,7 +501,7 @@ export default function BilliardsTracker() {
       setClubSync("pending");
       pushClubState(club.id, next, mergeWithRemote)
         .then((merged) => {
-          setData((prev) => mergeData(prev, merged));
+          setData((prev) => cacheAcceptedState(mergeData(prev, merged)));
           clubInFlightRef.current -= 1;
           if (clubInFlightRef.current === 0 && !pendingPersistRef.current) {
             setClubSync("synced");
@@ -630,7 +643,7 @@ export default function BilliardsTracker() {
   const restoreSafetyCopy = (copy) => {
     if (!window.confirm(`Вернуть копию от ${new Date(copy.ts).toLocaleString("ru-RU")}? Текущие данные будут заменены (их копия сохранится).`)) return;
     takeSafetyCopy("before-restore");
-    updateData(() => normalizeData(copy.data));
+    updateData((prev) => restoreSnapshot(prev, copy.data));
     haptic("success");
   };
 
@@ -761,7 +774,13 @@ export default function BilliardsTracker() {
       const id = gameIdRef.current;
       const g = prev.activeGames.find((x) => x.id === id);
       if (!g) return prev;
-      const next = fn(g);
+      let next;
+      try { next = fn(g); }
+      catch (e) {
+        if (e.code !== "GAME_EVENT_LIMIT") throw e;
+        setTimeout(() => window.alert(e.message), 0);
+        return prev;
+      }
       if (!next || next === g) return prev;
       return { ...prev, activeGames: prev.activeGames.map((x) => (x.id === id ? next : x)) };
     });
@@ -879,6 +898,7 @@ export default function BilliardsTracker() {
       if (lastTapRef.current.key === tapKey && now - lastTapRef.current.ts < 70) return;
       lastTapRef.current = { key: tapKey, ts: now };
     }
+    if ((activeGameNow()?.events?.length || 0) >= EVENT_LIMIT) { window.alert("Достигнут предел действий: завершите партию и начните новую. Счёт сохранён."); return; }
     haptic("light");
     if (!fast) setScorePulse({ pid: playerId, ts: Date.now() });
     // Each tap is recorded as its own event, so taps made on another club
@@ -887,6 +907,7 @@ export default function BilliardsTracker() {
   };
 
   const setScore = (playerId, value) => {
+    if ((activeGameNow()?.events?.length || 0) >= EVENT_LIMIT) { window.alert("Достигнут предел действий в партии. Счёт сохранён."); return; }
     const n = Math.max(0, Math.min(999, Math.floor(Number(value) || 0)));
     updateCurrentGame((g) => {
       if ((g.scores[playerId] || 0) === n) return g;
@@ -993,7 +1014,7 @@ export default function BilliardsTracker() {
     }
 
     const match = {
-      id: uid(),
+      id: resultIdForGame(g.id),
       date: new Date().toISOString(),
       participants: g.participants,
       scores: finalScores,
@@ -1038,7 +1059,7 @@ export default function BilliardsTracker() {
 
     updateData((prev) => ({
       ...prev,
-      matches: [...prev.matches, match],
+      matches: [...prev.matches.filter((m) => m.id !== match.id), match],
       activeGames: prev.activeGames.filter((x) => x.id !== g.id),
       activeSeries: nextSeries,
       activeBracket: bracketUpdate || prev.activeBracket,
@@ -1164,10 +1185,7 @@ export default function BilliardsTracker() {
     ].filter(Boolean);
     const text = lines.join("\n");
     try {
-      if (navigator.share) {
-        await navigator.share({ text });
-        return;
-      }
+      if (await shareText({ text })) return;
     } catch (e) {
       // fall through to clipboard
     }
@@ -1205,7 +1223,7 @@ export default function BilliardsTracker() {
     m.participants.forEach((pid) => {
       scores[pid] = (m.scores && m.scores[pid]) || 0;
     });
-    setEditDraft({ scores });
+    setEditDraft({ scores, ...(m.kolhozRounds ? { rounds: m.kolhozRounds.map((r) => ({ order: [...r.order], scores: { ...r.scores } })) } : {}) });
     setEditMatchId(m.id);
   };
 
@@ -1221,16 +1239,10 @@ export default function BilliardsTracker() {
       const idx = prev.matches.findIndex((m) => m.id === editMatchId);
       if (idx === -1) return prev;
       const old = prev.matches[idx];
-      const newScores = editDraft.scores;
-      let winnerId = old.winnerId;
-      if (!old.solo) {
-        const max = Math.max(...old.participants.map((pid) => newScores[pid] || 0));
-        const leaders = old.participants.filter((pid) => (newScores[pid] || 0) === max);
-        winnerId = leaders.includes(old.winnerId) ? old.winnerId : leaders[0];
-      }
-      const settlement = old.mode === "kolhoz" && !old.solo ? buildKolhozSettlement(old.participants, newScores) : old.settlement;
+      const edited = editCompletedMatch(old, editDraft.scores, editDraft.rounds);
+      const winnerId = edited.winnerId;
       const matches = [...prev.matches];
-      matches[idx] = { ...old, scores: newScores, winnerId, settlement };
+      matches[idx] = edited;
 
       let activeSeries = prev.activeSeries;
       if (old.seriesId && activeSeries && activeSeries.id === old.seriesId && winnerId !== old.winnerId) {
@@ -1435,7 +1447,7 @@ export default function BilliardsTracker() {
       const fresh = await fetchClubState(club.id);
       // Applied as a fresh local change: every restored record counts as just
       // edited, so older deletions on other members' devices can't win the merge.
-      if (fresh && fresh.data) updateData(normalizeData(fresh.data));
+      if (fresh && fresh.data) updateData((prev) => restoreSnapshot(prev, fresh.data));
       setClubHistory(await listClubHistory(club.id));
       haptic("success");
     } catch (e) {
@@ -1590,7 +1602,7 @@ export default function BilliardsTracker() {
     [data.matches, selectedMatchId]
   );
 
-  const exportCsv = () => {
+  const exportCsv = async () => {
     const rows = sortedHistory.map((m) => ({
       Дата: new Date(m.date).toLocaleDateString("ru-RU"),
       Время: new Date(m.date).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
@@ -1618,27 +1630,15 @@ export default function BilliardsTracker() {
       { title: "Статистика", rows: statRows },
       { title: "История партий", rows },
     ]);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `billiards-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    try {
+      await exportTextFile(`billiards-${new Date().toISOString().slice(0, 10)}.csv`, csv, "text/csv;charset=utf-8");
+    } catch (e) { window.alert("Не удалось сохранить таблицу. Попробуйте ещё раз."); }
   };
 
-  const exportBackup = () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `billiards-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const exportBackup = async () => {
+    try {
+      await exportTextFile(`billiards-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(data, null, 2), "application/json");
+    } catch (e) { window.alert("Не удалось сохранить копию. Попробуйте ещё раз."); }
   };
 
   const importBackup = (e) => {
@@ -1651,7 +1651,7 @@ export default function BilliardsTracker() {
         if (!window.confirm("Заменить текущие данные резервной копией?")) return;
         takeSafetyCopy("import-backup");
         const next = normalizeData(parsed);
-        updateData(next);
+        updateData((prev) => restoreSnapshot(prev, next));
       } catch (err) {
         window.alert("Не удалось прочитать файл резервной копии");
       }
@@ -1662,6 +1662,31 @@ export default function BilliardsTracker() {
 
   const activeGame = data.activeGames.find((g) => g.id === currentGameId) || null;
   const gameRunning = !!activeGame;
+
+  const nativeBackRef = useRef(null);
+  nativeBackRef.current = () => {
+    if (showOnboarding) return dismissOnboarding();
+    if (tieCandidates) return setTieCandidates(null);
+    if (scoreWheelPid) return setScoreWheelPid(null);
+    if (kolhozDraft) return setKolhozDraft(null);
+    if (editMatchId) return cancelEditMatch();
+    if (profilePid) return setProfilePid(null);
+    if (clubHistory !== undefined) return setClubHistory(undefined);
+    if (rulesOpen) return setRulesOpen(false);
+    if (victory) return closeVictory();
+    if (selectedMatchId) return setSelectedMatchId(null);
+    if (gameMode) return setGameMode(false);
+    if (currentGameId) return leaveToGameList();
+    if (tab !== "play") return setTab("play");
+    flushPersist();
+    minimizeNativeApp();
+  };
+  const nativeFlushRef = useRef(flushPersist);
+  nativeFlushRef.current = flushPersist;
+  useEffect(() => listenToNativeApp({
+    back: () => nativeBackRef.current?.(),
+    pause: () => nativeFlushRef.current(),
+  }), []);
 
   // Keep the screen on while a match is in progress (the OS releases the lock
   // whenever the app goes to the background, so it is re-requested on return).
@@ -2989,7 +3014,7 @@ export default function BilliardsTracker() {
                   <button style={styles.brassBtn} onClick={exportCsv}>
                     📊 Таблица (CSV)
                   </button>
-                  <button style={styles.diceBtn} onClick={() => window.print()}>
+                  <button style={styles.diceBtn} onClick={() => printReport().catch(() => window.alert("Не удалось открыть печать. Попробуйте экспорт таблицы."))}>
                     🖨️ PDF (печать)
                   </button>
                 </div>
@@ -3261,30 +3286,26 @@ export default function BilliardsTracker() {
             </h2>
             {editMatchId === selectedMatch.id ? (
               <>
-                <div style={styles.modalScores}>
-                  {selectedMatch.participants.map((pid) => (
-                    <div key={pid} style={styles.modalRow}>
-                      <span>
-                        <PlayerBall color={playerColor(pid)} size={12} /> {nameById(pid)}
-                      </span>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min="0"
-                        value={editDraft.scores[pid] ?? 0}
-                        onChange={(e) =>
-                          setEditDraft((d) => ({
-                            ...d,
-                            scores: { ...d.scores, [pid]: Math.max(0, Math.floor(Number(e.target.value) || 0)) },
-                          }))
-                        }
-                        onFocus={(e) => e.target.select()}
-                        style={{ ...styles.scoreInput, width: "76px" }}
-                      />
-                    </div>
-                  ))}
-                </div>
-                {!selectedMatch.solo && <p style={styles.modalHint}>Победитель определится автоматически по наибольшему счёту.</p>}
+                {(editDraft.rounds || [{ scores: editDraft.scores }]).map((round, ri) => (
+                  <div key={ri} style={styles.modalScores}>
+                    {editDraft.rounds && <p style={styles.modalHint}>Круг {ri + 1} · {round.order.map(nameById).join(" → ")}</p>}
+                    {selectedMatch.participants.map((pid) => (
+                      <div key={pid} style={styles.modalRow}>
+                        <span><PlayerBall color={playerColor(pid)} size={12} /> {nameById(pid)}</span>
+                        <input type="number" inputMode="numeric" min="0" max="999"
+                          aria-label={`${nameById(pid)} · круг ${ri + 1}`}
+                          value={round.scores[pid] ?? 0}
+                          onChange={(e) => {
+                            const value = Math.max(0, Math.min(999, Math.floor(Number(e.target.value) || 0)));
+                            setEditDraft((d) => d.rounds ? { ...d, rounds: d.rounds.map((r, i) => i === ri ? { ...r, scores: { ...r.scores, [pid]: value } } : r) }
+                              : { ...d, scores: { ...d.scores, [pid]: value } });
+                          }}
+                          onFocus={(e) => e.target.select()} style={{ ...styles.scoreInput, width: "76px" }} />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                {!selectedMatch.solo && <p style={styles.modalHint}>{editDraft.rounds ? "Победитель и расчёт между игроками пересчитаются по всем кругам." : "Победитель определится автоматически по наибольшему счёту."}</p>}
                 <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
                   <button style={{ ...styles.brassBtn, flex: 1 }} onClick={saveEditMatch}>
                     Сохранить
@@ -3357,11 +3378,9 @@ export default function BilliardsTracker() {
                   </p>
                 )}
                 <div style={{ display: "flex", gap: "8px", marginTop: "16px" }} className="no-print">
-                  {!selectedMatch.kolhozRounds && (
-                    <button style={{ ...styles.diceBtnSolid, flex: 1 }} onClick={() => startEditMatch(selectedMatch)}>
-                      ✏️ Исправить счёт
-                    </button>
-                  )}
+                  <button style={{ ...styles.diceBtnSolid, flex: 1 }} onClick={() => startEditMatch(selectedMatch)}>
+                    ✏️ Исправить счёт
+                  </button>
                   <button style={{ ...styles.cancelBtn, flex: 1 }} onClick={() => setSelectedMatchId(null)}>
                     Закрыть
                   </button>

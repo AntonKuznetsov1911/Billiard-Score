@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { canPromptInstall, promptInstall, onInstallChange, isInstalled, deviceKind } from "./install.js";
-import { isNativeApp } from "./native.js";
+import { isNativeApp, shareText } from "./native.js";
 import { COLORS } from "./constants.js";
 
 // The public address: inside the APK the page itself lives at https://localhost.
@@ -40,10 +40,7 @@ export function InstallCard({ styles }) {
   const share = async () => {
     const text = "🎱 Твой бильярд — учёт партий и статистики. Откройте на телефоне и установите:";
     try {
-      if (navigator.share) {
-        await navigator.share({ title: "Твой бильярд", text, url: link });
-        return;
-      }
+      if (await shareText({ title: "Твой бильярд", text, url: link })) return;
     } catch (e) {
       return; // closed the share sheet
     }

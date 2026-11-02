@@ -216,7 +216,7 @@ begin
 
   -- Метка времени внутри данных должна быть новой, иначе клиенты сочтут
   -- восстановленное состояние устаревшим и проигнорируют его.
-  restored := jsonb_set(h.data, '{updatedAt}', to_jsonb((extract(epoch from now()) * 1000)::bigint));
+  restored := jsonb_set(jsonb_set(h.data, '{updatedAt}', to_jsonb((extract(epoch from now()) * 1000)::bigint)), '{restoreAt}', to_jsonb((extract(epoch from now()) * 1000)::bigint));
   update club_state set data = restored, updated_at = now() where club_id = h.club_id;
 end;
 $$;

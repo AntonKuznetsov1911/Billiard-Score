@@ -850,7 +850,7 @@ describe("kolhoz with a trimmed event log", () => {
     for (let i = 0; i < 1600; i++) g = addGameEvent(g, { id: `a${i}`, pid: i % 2 ? "s" : "v", d: 1, ts: i });
     g = startKolhozRound(g, ["s", "v"]); // round 1 frozen at 800 : 800
     for (let i = 0; i < 1500; i++) g = addGameEvent(g, { id: `b${i}`, pid: "s", d: 1, ts: 5000 + i });
-    expect(g.events).toHaveLength(3000); // the 100 oldest first-round taps are gone
+    expect(g.events).toHaveLength(3100); // full log is preserved, including the first round
     expect(kolhozAllRounds(g)[0].scores).toEqual({ v: 800, s: 800 });
   });
 });
@@ -868,11 +868,12 @@ describe("kolhoz log cap is tracked, not guessed", () => {
     expect(m.trimmedRound).toBe(-1);
     expect(kolhozAllRounds(m)[0].scores).toEqual({ v: 750, s: 750 });
   });
-  it("remembers which round lost events", () => {
+  it("preserves the complete log beyond the old 3000 event limit", () => {
     let g = normalizeData({ activeGames: [{ id: "k", participants: ["v", "s"], events: [], kolhoz: { order: ["v", "s"], rounds: [] } }] }).activeGames[0];
     for (let i = 0; i < 3001; i++) g = addGameEvent(g, { id: `a${i}`, pid: "v", d: 0, ts: i });
-    expect(g.trimmedRound).toBe(0);
-    expect(normalizeData({ activeGames: [g] }).activeGames[0].trimmedRound).toBe(0);
+    expect(g.events).toHaveLength(3001);
+    expect(g.trimmedRound).toBe(-1);
+    expect(normalizeData({ activeGames: [g] }).activeGames[0].trimmedRound).toBe(-1);
   });
 });
 
@@ -912,5 +913,60 @@ describe("money feature removed", () => {
     expect(out.matches[0]).not.toHaveProperty("payments");
     expect(out.activeGames[0]).not.toHaveProperty("stake");
     expect(out.activeGames[0]).not.toHaveProperty("kolhozUnit");
+  });
+});
+
+
+describe("Android release data regressions", () => {
+  it("an explicit restore cannot resurrect later matches from an offline device", async () => {
+    const { restoreSnapshot } = await import("./gameLogic.js");
+    const old = normalizeData({ matches: [{ id: "m1", participants: ["a"], date: "2026-01-01" }] });
+    const current = { ...old, matches: [...old.matches, { id: "m2", participants: ["a"], date: "2026-01-02" }], updatedAt: 50 };
+    const restored = restoreSnapshot(current, old, 100);
+    const offline = { ...current, updatedAt: 200 };
+    expect(mergeData(restored, offline).matches.map((m) => m.id)).toEqual(["m1"]);
+    expect(mergeData(offline, restored).matches.map((m) => m.id)).toEqual(["m1"]);
+    expect(normalizeData(restored).restoreAt).toBe(100);
+  });
+
+  it("finishing the same game on two devices produces one history entry", async () => {
+    const { resultIdForGame } = await import("./gameLogic.js");
+    const match = { id: resultIdForGame("g1"), participants: ["a", "b"], winnerId: "a", date: "2026-01-01", scores: { a: 8, b: 2 } };
+    const a = normalizeData({ matches: [match], endedGames: ["g1"], updatedAt: 20 });
+    const b = normalizeData({ matches: [{ ...match, date: "2026-01-02" }], endedGames: ["g1"], updatedAt: 21 });
+    expect(mergeData(a, b).matches).toHaveLength(1);
+  });
+
+  it("keeps the first player's points after 3000 later actions and a reload", () => {
+    let g = normalizeData({ activeGames: [{ id: "g", participants: ["a", "b"], events: [] }] }).activeGames[0];
+    g = addGameEvent(g, { id: "first", pid: "a", d: 5, ts: 1 });
+    for (let i = 0; i < 3000; i++) g = addGameEvent(g, { id: `b${i}`, pid: "b", v: i % 8, ts: i + 2 });
+    expect(g.scores.a).toBe(5);
+    expect(normalizeData({ activeGames: [g] }).activeGames[0].scores.a).toBe(5);
+    expect(mergeData(normalizeData({ activeGames: [g] }), normalizeData({})).activeGames[0].scores.a).toBe(5);
+  });
+
+  it("reports a full log instead of dropping scoring events", async () => {
+    const { EVENT_LIMIT } = await import("./gameLogic.js");
+    const g = { participants: ["a"], events: Array.from({ length: EVENT_LIMIT }, (_, i) => ({ id: `e${i}`, pid: "a", d: 0, ts: i })) };
+    expect(() => addGameEvent(g, { id: "extra", pid: "a", d: 1, ts: 99999 })).toThrow(/предел/);
+    expect(g.events).toHaveLength(EVENT_LIMIT);
+  });
+});
+
+
+describe("editing kolhoz results", () => {
+  it("recalculates winner, net and pair matrix from individual rounds", async () => {
+    const { editCompletedMatch } = await import("./gameLogic.js");
+    const rounds = [{ order: ["a", "b", "c"], scores: { a: 6, b: 5, c: 0 } }];
+    const match = { participants: ["a", "b", "c"], mode: "kolhoz", winnerId: "a", kolhozRounds: rounds, kolhozNet: { a: 100 }, scores: {} };
+    const edited = editCompletedMatch(match, {}, rounds);
+    expect(edited.winnerId).toBe("b");
+    expect(edited.scores).toEqual({ a: 6, b: 5, c: 0 });
+    expect(edited.kolhozNet).toEqual({ a: 1, b: 5, c: -6 });
+    expect(edited.settlement.a.b).toBe(-5);
+    const corrected = editCompletedMatch(edited, {}, [{ order: ["a", "b", "c"], scores: { a: 10, b: 1, c: 0 } }]);
+    expect(corrected.winnerId).toBe("a");
+    expect(corrected.kolhozNet).toEqual({ a: 9, b: 1, c: -10 });
   });
 });

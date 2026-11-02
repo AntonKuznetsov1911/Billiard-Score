@@ -1,20 +1,25 @@
 {
   "name": "tvoy-billiard",
   "private": true,
-  "version": "1.0.0",
-  "description": "Твой бильярд — учёт партий, счёта и статистики для русского бильярда и пула. Оптимизировано под Telegram Mini App.",
+  "version": "1.1.0",
+  "description": "РўРІРѕР№ Р±РёР»СЊСЏСЂРґ вЂ” СѓС‡С‘С‚ РїР°СЂС‚РёР№, СЃС‡С‘С‚Р° Рё СЃС‚Р°С‚РёСЃС‚РёРєРё РґР»СЏ СЂСѓСЃСЃРєРѕРіРѕ Р±РёР»СЊСЏСЂРґР° Рё РїСѓР»Р°. РћРїС‚РёРјРёР·РёСЂРѕРІР°РЅРѕ РїРѕРґ Telegram Mini App.",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "android:sync": "npm run build && cap sync android",
+    "android:open": "cap open android"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
     "@capacitor/ios": "^8.6.0",
+    "@capacitor/share": "^8.0.3",
     "@fontsource/fraunces": "^5.3.0",
     "@fontsource/inter": "^5.3.0",
     "@fontsource/space-mono": "^5.3.0",

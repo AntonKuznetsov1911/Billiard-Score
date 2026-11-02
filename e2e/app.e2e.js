@@ -233,3 +233,24 @@ test("a safety copy can be deleted; the data section is named plainly", async ({
   await expect.poll(copies).toBe(0);
   await expect(page.getByText("Пока нет копий.")).toBeVisible();
 });
+
+
+test("editing a kolhoz round updates the winner and pair totals together", async ({ page }) => {
+  await seed(page, base({ players: four.slice(0, 3), matches: [{
+    id: "kolhoz-edit", date: "2026-10-28T10:00:00Z", participants: ["p1", "p2", "p3"],
+    mode: "kolhoz", gameType: "russian", scores: { p1: 6, p2: 5, p3: 0 }, winnerId: "p2",
+    kolhozRounds: [{ order: ["p1", "p2", "p3"], scores: { p1: 6, p2: 5, p3: 0 } }],
+    kolhozNet: { p1: 1, p2: 5, p3: -6 },
+  }] }));
+  await openGame(page);
+  await page.locator("nav").getByRole("button", { name: "История" }).click();
+  await page.getByText("Антон (6)", { exact: true }).first().click();
+  await page.getByRole("button", { name: /Исправить счёт/ }).click();
+  await page.getByRole("spinbutton", { name: "Антон · круг 1" }).fill("10");
+  await page.getByRole("spinbutton", { name: "Игорь · круг 1" }).fill("1");
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await expect.poll(async () => (await stored(page)).matches[0].winnerId).toBe("p1");
+  const m = (await stored(page)).matches[0];
+  expect(m.kolhozNet).toEqual({ p1: 9, p2: 1, p3: -10 });
+  expect(m.scores).toEqual({ p1: 10, p2: 1, p3: 0 });
+});
