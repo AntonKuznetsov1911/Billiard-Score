@@ -17,6 +17,7 @@ on:
       - "android/**"
       - "capacitor.config.json"
       - "package.json"
+      - "package-lock.json"
       - ".github/workflows/android.yml"
   pull_request:
     branches: [main]
@@ -25,6 +26,7 @@ on:
       - "android/**"
       - "capacitor.config.json"
       - "package.json"
+      - "package-lock.json"
       - ".github/workflows/android.yml"
 
 permissions:
@@ -46,6 +48,7 @@ jobs:
           distribution: temurin
           java-version: 21
       - run: npm ci
+      - run: npm test
       - run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
@@ -53,7 +56,7 @@ jobs:
       - run: npx cap sync android
       - name: Debug APK
         working-directory: android
-        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+        run: chmod +x gradlew && ./gradlew assembleDebug lintDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: billiard-debug-apk
@@ -69,8 +72,10 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         working-directory: android
         run: |
-          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.keystore"
-          ./gradlew bundleRelease --no-daemon \
+          trap 'rm -f "$RUNNER_TEMP/release.keystore"' EXIT
+          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          chmod 600 "$RUNNER_TEMP/release.keystore"
+          ./gradlew assembleRelease bundleRelease --no-daemon \
             -Pandroid.injected.signing.store.file="$RUNNER_TEMP/release.keystore" \
             -Pandroid.injected.signing.store.password="$KEYSTORE_PASSWORD" \
             -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
@@ -80,5 +85,7 @@ jobs:
         if: env.HAS_KEYSTORE == 'true'
         with:
           name: billiard-release-aab
-          path: android/app/build/outputs/bundle/release/*.aab
+          path: |
+            android/app/build/outputs/bundle/release/*.aab
+            android/app/build/outputs/apk/release/*.apk
           retention-days: 30

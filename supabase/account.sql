@@ -29,7 +29,12 @@ begin
 
   delete from club_members where user_id = uid;
   update clubs set created_by = null where created_by = uid;
-  update club_state_history set replaced_by = null where replaced_by = uid;
+  if to_regclass('public.club_state_history') is not null then
+    execute 'update public.club_state_history set replaced_by = null where replaced_by = $1' using uid;
+  end if;
+  if to_regclass('public.feedback') is not null then
+    delete from public.feedback where user_id = uid;
+  end if;
 
   delete from auth.users where id = uid;
 end;

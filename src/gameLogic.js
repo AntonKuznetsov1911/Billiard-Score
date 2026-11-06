@@ -18,23 +18,25 @@ export function loadInitial() {
     deletedPlayers: [],
     endedGames: [],
     metaAt: 0,
+    restoreAt: 0,
     updatedAt: 0,
   };
 }
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+const safeKey = (value) => !["__proto__", "constructor", "prototype"].includes(value);
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const cleanStr = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
 const cleanNum = (v, max = 100000) => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(max, v)) : 0);
 const cleanStamp = (v) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
 const cleanScores = (v) => {
   const out = {};
-  if (isObj(v)) Object.keys(v).slice(0, 20).forEach((k) => (out[k] = cleanNum(v[k], 999)));
+  if (isObj(v)) Object.keys(v).filter(safeKey).slice(0, 20).forEach((k) => (out[k] = cleanNum(v[k], 999)));
   return out;
 };
 const cleanSigned = (v, max = 100000) => (typeof v === "number" && Number.isFinite(v) ? Math.max(-max, Math.min(max, Math.round(v))) : 0);
-const cleanPidList = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && x).map((x) => x.slice(0, 64)).slice(0, 20) : []);
-const cleanId = (v) => (typeof v === "string" && v ? v.slice(0, 64) : null);
+const cleanPidList = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && x && safeKey(x)).map((x) => x.slice(0, 64)).slice(0, 20) : []);
+const cleanId = (v) => (typeof v === "string" && v && safeKey(v) ? v.slice(0, 64) : null);
 const cleanInt = (v, min, max) => (typeof v === "number" && Number.isInteger(v) && v >= min && v <= max ? v : null);
 const cleanGameType = (v) => (v === "pool" ? "pool" : "russian");
 const cleanMode = (v) => (typeof v === "string" && Object.prototype.hasOwnProperty.call(RUSSIAN_MODES, v) ? v : null);
@@ -64,11 +66,13 @@ function cleanSettlement(v) {
   if (!isObj(v)) return null;
   const out = {};
   Object.keys(v)
+    .filter(safeKey)
     .slice(0, 20)
     .forEach((a) => {
       if (!isObj(v[a])) return;
       out[a] = {};
       Object.keys(v[a])
+        .filter(safeKey)
         .slice(0, 20)
         .forEach((b) => (out[a][b] = cleanSigned(v[a][b])));
     });
@@ -89,7 +93,7 @@ function cleanKolhozRounds(v) {
 // entry can't crash every member's app.
 export function sanitizePlayers(list) {
   return (Array.isArray(list) ? list : [])
-    .filter((p) => isObj(p) && typeof p.id === "string" && p.id && typeof p.name === "string")
+    .filter((p) => isObj(p) && cleanId(p.id) && typeof p.name === "string")
     .slice(0, 200)
     .map((p, i) => ({
       ...p,
@@ -113,8 +117,8 @@ export function sanitizeMatches(list) {
     // stake/kolhozUnit/payments: left by the removed "for money" feature.
     .map(({ stake, kolhozUnit, payments, ...m }) => ({
       ...m,
-      id: typeof m.id === "string" ? m.id.slice(0, 64) : uid(),
-      participants: m.participants.slice(0, 20),
+      id: cleanId(m.id) || uid(),
+      participants: cleanPidList(m.participants),
       winnerId: typeof m.winnerId === "string" ? m.winnerId : null,
       scores: cleanScores(m.scores),
       durationMs: cleanNum(m.durationMs, 7 * 86400000),
@@ -180,7 +184,9 @@ export function restoreMatchFromTrash(data, matchId) {
   };
 }
 
-const EVENT_LIMIT = 3000;
+// Keep complete score logs. Never silently drop events: a full log is reported
+// to the UI so the user can finish the game or export a backup.
+export const EVENT_LIMIT = 20000;
 const ENDED_LIMIT = 100;
 const TOMBSTONE_LIMIT = 1000;
 const cleanIds = (v, limit) =>
@@ -255,10 +261,9 @@ function withScores(g) {
 // actually lost events to the cap (kolhoz then trusts that round's snapshot).
 // -1 means nothing was dropped.
 function capEvents(trimmedRound, events) {
-  const prev = typeof trimmedRound === "number" && trimmedRound >= 0 ? trimmedRound : -1;
-  if (events.length <= EVENT_LIMIT) return { events, trimmedRound: prev };
-  const dropped = events.slice(0, events.length - EVENT_LIMIT);
-  return { events: events.slice(-EVENT_LIMIT), trimmedRound: Math.max(prev, ...dropped.map((e) => e.r || 0)) };
+  // Preserve every event, including unions received from offline devices.
+  // Only local additions are limited; pruning a shared log loses scores.
+  return { events, trimmedRound: typeof trimmedRound === "number" && trimmedRound >= 0 ? trimmedRound : -1 };
 }
 
 // Games saved before the marker existed don't say whether their full log was
@@ -266,12 +271,17 @@ function capEvents(trimmedRound, events) {
 function cleanTrimmedRound(v, events) {
   const n = cleanInt(v, -1, 1000);
   if (n !== null) return n;
-  return events.length >= EVENT_LIMIT ? Math.min(...events.map((e) => e.r || 0)) : -1;
+  return events.length >= 3000 ? Math.min(...events.map((e) => e.r || 0)) : -1;
 }
 
 export function addGameEvent(g, event) {
   const e = sanitizeEvent(g && currentRound(g) ? { ...event, r: currentRound(g) } : event);
   if (!g || !e) return g;
+  if ((g.events || []).length >= EVENT_LIMIT) {
+    const error = new Error("Достигнут предел действий в партии. Завершите её и начните новую — счёт сохранён.");
+    error.code = "GAME_EVENT_LIMIT";
+    throw error;
+  }
   return withScores({ ...g, ...capEvents(g.trimmedRound, [...(g.events || []), e]) });
 }
 
@@ -319,7 +329,7 @@ function sanitizeActiveGame(g) {
     participants,
     // Games saved before the event log existed start from their stored score.
     baseScores: cleanScores(legacy ? g.scores : g.baseScores),
-    events: legacy ? [] : g.events.map(sanitizeEvent).filter(Boolean).slice(-EVENT_LIMIT),
+    events: legacy ? [] : g.events.map(sanitizeEvent).filter(Boolean),
     undone: cleanIds(g.undone, EVENT_LIMIT),
     gameType: cleanGameType(g.gameType),
     mode: cleanMode(g.mode),
@@ -372,6 +382,7 @@ export function normalizeData(input) {
     deletedPlayers: cleanTombstones(parsed.deletedPlayers),
     endedGames,
     metaAt: cleanStamp(parsed.metaAt),
+    restoreAt: cleanStamp(parsed.restoreAt),
     updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
   };
 }
@@ -388,7 +399,7 @@ const META_KEYS = ["activeSeries", "activeBracket", "theme", "gameType", "russia
 // see who recorded, edited or removed what.
 export function stampChanges(prev, next, now = Date.now(), by = "") {
   if (!prev || !next || prev === next) return next;
-  let out = next;
+  let out = { ...next, restoreAt: Math.max(cleanStamp(prev.restoreAt), cleanStamp(next.restoreAt)) };
   const author = typeof by === "string" ? by.slice(0, 40) : "";
   const stampList = (key, withAuthor) => {
     if (next[key] === prev[key]) return;
@@ -480,6 +491,11 @@ function mergeGameLists(newer, older, ended) {
 export function mergeData(a, b) {
   if (!a) return b;
   if (!b) return a;
+  // A deliberate restore starts a new generation. Stale devices must not
+  // resurrect records excluded from that snapshot.
+  if (cleanStamp(a.restoreAt) !== cleanStamp(b.restoreAt)) {
+    return cleanStamp(a.restoreAt) > cleanStamp(b.restoreAt) ? a : b;
+  }
   // "newer" only breaks ties; otherwise every record is decided on its own.
   const bNewer = (b.updatedAt || 0) > (a.updatedAt || 0);
   const older = bNewer ? a : b;
@@ -539,6 +555,31 @@ export function mergeData(a, b) {
     metaAt: Math.max(cleanStamp(older.metaAt), cleanStamp(newer.metaAt)),
     updatedAt: Math.max(older.updatedAt || 0, newer.updatedAt || 0),
   };
+}
+
+// A restore replaces a dataset, unlike a normal merge of independent edits.
+export function restoreSnapshot(previous, snapshot, now = Date.now()) {
+  const restored = normalizeData(snapshot);
+  const at = Math.max(now, cleanStamp(previous.restoreAt) + 1);
+  return { ...stampChanges(previous, restored, at), restoreAt: at, updatedAt: at };
+}
+
+export function editCompletedMatch(match, scores, rounds = null) {
+  const kolhozRounds = match.kolhozRounds ? cleanKolhozRounds(rounds || match.kolhozRounds) : null;
+  const finalScores = kolhozRounds ? kolhozGross(match.participants, kolhozRounds) : cleanScores(scores);
+  const settlement = kolhozRounds ? kolhozSettlement(match.participants, kolhozRounds)
+    : match.mode === "kolhoz" && !match.solo ? buildKolhozSettlement(match.participants, finalScores) : match.settlement;
+  const net = kolhozRounds ? kolhozNet(settlement) : null;
+  const standing = net || finalScores;
+  const max = Math.max(...match.participants.map((pid) => standing[pid] || 0));
+  const leaders = match.participants.filter((pid) => (standing[pid] || 0) === max);
+  const winnerId = match.solo ? match.winnerId : leaders.includes(match.winnerId) ? match.winnerId : leaders[0];
+  return { ...match, scores: finalScores, winnerId, settlement,
+    ...(kolhozRounds ? { kolhozRounds, kolhozNet: net } : {}) };
+}
+
+export function resultIdForGame(gameId) {
+  return `result-${gameId}`;
 }
 
 export function formatDuration(ms) {

@@ -1,3 +1,5 @@
+import { isNativeApp } from "./native.js";
+import { startNativeGoogleSignIn, listenForNativeGoogleSignIn } from "./nativeAuth.js";
 import { supabase } from "./supabaseClient.js";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O, 1/I — easy to read aloud
@@ -26,6 +28,11 @@ export async function sendMagicLink(email) {
   if (error) throw error;
 }
 
+export async function signInWithPassword(email, password) {
+  const { error } = await requireClient().auth.signInWithPassword({ email, password });
+  if (error) throw new Error("Не удалось войти. Проверьте email и пароль.");
+}
+
 export async function verifyEmailOtp(email, token) {
   const client = requireClient();
   const { error } = await client.auth.verifyOtp({ email, token: token.trim(), type: "email" });
@@ -34,11 +41,16 @@ export async function verifyEmailOtp(email, token) {
 
 export async function signInWithGoogle() {
   const client = requireClient();
+  if (isNativeApp()) return startNativeGoogleSignIn(client);
   const { error } = await client.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo: window.location.href },
   });
   if (error) throw error;
+}
+
+export function onNativeAuthReturn(callbacks) {
+  return listenForNativeGoogleSignIn(supabase, callbacks);
 }
 
 export function onAuthChange(callback) {
@@ -104,7 +116,7 @@ export async function createClub(name, displayName) {
 
 export async function joinClub(code, displayName) {
   const client = requireClient();
-  const user = await currentUser();
+  await currentUser();
   const clean = code.trim().toUpperCase();
 
   // Preferred path: the join_club_by_code function (see supabase/hardening.sql),
@@ -124,18 +136,11 @@ export async function joinClub(code, displayName) {
   if (/too_many_attempts/.test(rpcError.message || "")) {
     throw new Error("Слишком много неверных кодов — попробуйте через 15 минут");
   }
-  // Database not hardened yet (function missing): fall back to the legacy lookup.
+  // Joining must always pass through the server's authorization and rate limit.
   const missing = rpcError.code === "PGRST202" || rpcError.code === "42883" || /Could not find the function/i.test(rpcError.message || "");
   if (!missing) throw rpcError;
 
-  const { data: club, error } = await client.from("clubs").select("*").eq("code", clean).maybeSingle();
-  if (error) throw error;
-  if (!club) throw new Error("Клуб с таким кодом не найден");
-  const { error: joinError } = await client
-    .from("club_members")
-    .insert({ club_id: club.id, user_id: user.id, display_name: displayName || null });
-  if (joinError && joinError.code !== "23505") throw joinError; // 23505 — уже состоит в клубе, это ок
-  return club;
+  throw new Error("Вход в клуб требует обновления настроек сервера. Обратитесь в поддержку.");
 }
 
 export async function leaveClub(clubId) {

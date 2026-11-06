@@ -6,3 +6,8 @@ dist/
 .env.local
 test-results/
 playwright-report/
+
+*.jks
+*.keystore
+signing*.json
+android/.kotlin/

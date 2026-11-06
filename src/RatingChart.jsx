@@ -71,7 +71,7 @@ export function WinRateTrendChart({ trendData, players, dark, hintColor, playerC
   return (
     <div style={{ width: "100%", height: 260 }}>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={trendData} margin={{ top: 10, right: 10, left: -22, bottom: 0 }}>
+        <LineChart data={trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <defs>
             {players.map((p) => (
               <linearGradient key={p.id} id={`trendLine-${p.id}`} x1="0" y1="0" x2="1" y2="0">

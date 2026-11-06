@@ -216,7 +216,7 @@ begin
 
   -- Метка времени внутри данных должна быть новой, иначе клиенты сочтут
   -- восстановленное состояние устаревшим и проигнорируют его.
-  restored := jsonb_set(h.data, '{updatedAt}', to_jsonb((extract(epoch from now()) * 1000)::bigint));
+  restored := jsonb_set(jsonb_set(h.data, '{updatedAt}', to_jsonb((extract(epoch from now()) * 1000)::bigint)), '{restoreAt}', to_jsonb((extract(epoch from now()) * 1000)::bigint));
   update club_state set data = restored, updated_at = now() where club_id = h.club_id;
 end;
 $$;
@@ -260,7 +260,12 @@ begin
 
   delete from club_members where user_id = uid;
   update clubs set created_by = null where created_by = uid;
-  update club_state_history set replaced_by = null where replaced_by = uid;
+  if to_regclass('public.club_state_history') is not null then
+    execute 'update public.club_state_history set replaced_by = null where replaced_by = $1' using uid;
+  end if;
+  if to_regclass('public.feedback') is not null then
+    delete from public.feedback where user_id = uid;
+  end if;
 
   delete from auth.users where id = uid;
 end;

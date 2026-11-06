@@ -233,3 +233,110 @@ test("a safety copy can be deleted; the data section is named plainly", async ({
   await expect.poll(copies).toBe(0);
   await expect(page.getByText("Пока нет копий.")).toBeVisible();
 });
+
+
+test("editing a kolhoz round updates the winner and pair totals together", async ({ page }) => {
+  await seed(page, base({ players: four.slice(0, 3), matches: [{
+    id: "kolhoz-edit", date: "2026-10-28T10:00:00Z", participants: ["p1", "p2", "p3"],
+    mode: "kolhoz", gameType: "russian", scores: { p1: 6, p2: 5, p3: 0 }, winnerId: "p2",
+    kolhozRounds: [{ order: ["p1", "p2", "p3"], scores: { p1: 6, p2: 5, p3: 0 } }],
+    kolhozNet: { p1: 1, p2: 5, p3: -6 },
+  }] }));
+  await openGame(page);
+  await page.locator("nav").getByRole("button", { name: "История" }).click();
+  await page.getByText("Антон (6)", { exact: true }).first().click();
+  await page.getByRole("button", { name: /Исправить счёт/ }).click();
+  await page.getByRole("spinbutton", { name: "Антон · круг 1" }).fill("10");
+  await page.getByRole("spinbutton", { name: "Игорь · круг 1" }).fill("1");
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await expect.poll(async () => (await stored(page)).matches[0].winnerId).toBe("p1");
+  const m = (await stored(page)).matches[0];
+  expect(m.kolhozNet).toEqual({ p1: 9, p2: 1, p3: -10 });
+  expect(m.scores).toEqual({ p1: 10, p2: 1, p3: 0 });
+});
+
+test("password sign-in reports failure and clears the password; privacy remains accessible", async ({ page }) => {
+  await seed(page, base());
+  let submitted;
+  await page.route("https://*.supabase.co/auth/v1/token?grant_type=password", async (route) => {
+    submitted = route.request().postDataJSON();
+    await route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "invalid_grant", error_description: "Invalid login credentials" }) });
+  });
+  await openGame(page);
+  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await page.getByText("Вход по паролю", { exact: true }).click();
+  await page.getByPlaceholder("Ваш email").fill("review-test@example.com");
+  await page.getByLabel("Пароль аккаунта").fill("test-password-only");
+  await page.getByRole("button", { name: "Войти по паролю", exact: true }).click();
+  await expect(page.getByText("Не удалось войти. Проверьте email и пароль.")).toBeVisible();
+  expect(submitted.email).toBe("review-test@example.com");
+  expect(submitted.password).toBe("test-password-only");
+  await expect(page.getByLabel("Пароль аккаунта")).toHaveValue("");
+  await expect(page.getByRole("link", { name: "Политика конфиденциальности" })).toHaveAttribute("href", "privacy.html");
+});
+
+test("password sign-in opens the authenticated club controls without an email code", async ({ page }) => {
+  await seed(page, base());
+  const user = { id: "00000000-0000-4000-8000-000000000001", aud: "authenticated", role: "authenticated", email: "review-test@example.com", app_metadata: { provider: "email" }, user_metadata: {}, created_at: new Date().toISOString() };
+  const claims = Buffer.from(JSON.stringify({ sub: user.id, aud: "authenticated", role: "authenticated", exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url");
+  await page.route("https://*.supabase.co/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/auth/v1/token") {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ access_token: "eyJhbGciOiJIUzI1NiJ9." + claims + ".test", token_type: "bearer", expires_in: 3600, refresh_token: "test-refresh-only", user }) });
+    } else if (url.pathname === "/auth/v1/user") {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify(user) });
+    } else {
+      await route.fulfill({ contentType: "application/json", body: "[]" });
+    }
+  });
+  await openGame(page);
+  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await page.getByText("Вход по паролю", { exact: true }).click();
+  await page.getByPlaceholder("Ваш email").fill(user.email);
+  await page.getByLabel("Пароль аккаунта").fill("test-password-only");
+  await page.getByRole("button", { name: "Войти по паролю", exact: true }).click();
+  await expect(page.getByText("Вы вошли как review-test@example.com.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Удалить аккаунт", exact: true })).toBeVisible();
+});
+
+test("untrusted player names remain text and oversized backup imports preserve data", async ({ page }) => {
+  const name = "<img src=x onerror=window.__xss=1>";
+  await seed(page, base({ players: [{ id: "safe", name, color: "#0057B8" }] }));
+  await openGame(page);
+  await expect(page.getByText(name, { exact: true })).toBeVisible();
+  await expect(page.locator("img[src=x]")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__xss)).toBeUndefined();
+  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  let warning;
+  page.once("dialog", async (dialog) => {
+    warning = dialog.message();
+    await dialog.dismiss();
+  });
+  await page.locator('input[type="file"]').setInputFiles({ name: "backup.json", mimeType: "application/json", buffer: Buffer.alloc(20 * 1024 * 1024 + 1, 32) });
+  expect(warning).toContain("20 МБ");
+  expect((await stored(page)).players[0].name).toBe(name);
+});
+
+test("invalid backup JSON structure cannot wipe existing players", async ({ page }) => {
+  await seed(page, base());
+  await openGame(page);
+  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  const message = page.waitForEvent("dialog");
+  await page.locator('input[type="file"]').setInputFiles({ name: "backup.json", mimeType: "application/json", buffer: Buffer.from("{}") });
+  const dialog = await message;
+  expect(dialog.type()).toBe("alert");
+  await dialog.dismiss();
+  expect((await stored(page)).players).toEqual(players);
+});
+
+test("production CSP blocks inline script execution", async ({ page }) => {
+  await seed(page, base());
+  await page.goto("/");
+  await expect(page.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveAttribute("content", /script-src 'self'/);
+  await page.evaluate(() => {
+    const script = document.createElement("script");
+    script.textContent = "window.__inlineSecurityProbe = true";
+    document.head.appendChild(script);
+  });
+  expect(await page.evaluate(() => window.__inlineSecurityProbe)).toBeUndefined();
+});
