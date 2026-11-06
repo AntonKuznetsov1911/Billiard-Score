@@ -3,6 +3,7 @@
 // so these stay dormant; to bring the Mini App back, add
 // <script src="https://telegram.org/js/telegram-web-app.js"></script> to index.html
 // and https://telegram.org to script-src of the CSP in vite.config.js.
+import { nativeHaptic } from "./native.js";
 export function getTG() {
   try {
     // The script defines Telegram.WebApp in any browser; initData is only
@@ -18,7 +19,7 @@ export function getTG() {
 
 export function haptic(type) {
   const tg = getTG();
-  if (!tg || !tg.HapticFeedback) return;
+  if (!tg || !tg.HapticFeedback) { nativeHaptic(type); return; }
   try {
     if (type === "success" || type === "error" || type === "warning") {
       tg.HapticFeedback.notificationOccurred(type);

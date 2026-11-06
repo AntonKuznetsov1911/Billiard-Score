@@ -7,6 +7,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(NativePrintPlugin.class);
+        registerPlugin(NativeUXPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -1,6 +1,15 @@
 import { test, expect } from "@playwright/test";
 
 const KEY = "billiards-club-data";
+// Preserve the original 1.1.6 regression suite as a comparison baseline.
+// Modern navigation and the new flows are exercised in design.e2e.js.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("classic-selected")) return;
+    sessionStorage.setItem("classic-selected", "1");
+    localStorage.setItem("billiards-design-mode", "classic");
+  });
+});
 
 // Seeds storage before the app loads (skips onboarding).
 async function seed(page, data) {

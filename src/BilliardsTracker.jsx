@@ -75,10 +75,14 @@ import { ClubTerms, ClubSafetyCard } from "./ClubSafetyCard.jsx";
 import { acceptedClubTerms, acceptClubTerms, blockedClubs, setClubBlocked, clubSafetyStorage } from "./clubSafety.js";
 import { FeedbackCard } from "./FeedbackCard.jsx";
 import { InstallCard } from "./InstallCard.jsx";
-import { isNativeApp, exportTextFile, shareText, listenToNativeApp, minimizeNativeApp, printReport } from "./native.js";
+import { isNativeApp, exportTextFile, shareText, listenToNativeApp, minimizeNativeApp, printReport, shareImageBlob } from "./native.js";
 import { buildCsv } from "./csv.js";
 import { getTG, haptic } from "./telegram.js";
 import { makeStyles } from "./styles.js";
+import "./modern.css";
+import { HomeHub, SettingsIndex, LineIcon } from "./ui/DesignUI.jsx";
+import { readPresets, savePreset, removePreset, historyDay } from "./designPreferences.js";
+import { renderResultCard } from "./resultCard.js";
 import {
   Die,
   PyramidMini,
@@ -145,12 +149,22 @@ const cacheAcceptedState = (state) => {
   return state;
 };
 
-export default function BilliardsTracker() {
+export default function BilliardsTracker({ onDesignModeChange }) {
   const [data, setData] = useState(loadInitial());
   const [loaded, setLoaded] = useState(false);
   const [nameInput, setNameInput] = useState("");
   const [selected, setSelected] = useState([]);
   const [tab, setTab] = useState("play");
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [settingsPage, setSettingsPage] = useState(null);
+  const [statsView, setStatsView] = useState("overview");
+  const [matchMenu, setMatchMenu] = useState(null);
+  const [presets, setPresets] = useState(() => readPresets({ getItem: key => window.localStorage.getItem(key) }));
+  const [presetDraft, setPresetDraft] = useState(false);
+  const [presetLabel, setPresetLabel] = useState("");
+  const [hapticsEnabled, setHapticsEnabled] = useState(() => readLocal("billiards-haptics") !== "off");
+  const [resultCard, setResultCard] = useState(null);
+  const [cardBusy, setCardBusy] = useState(false);
   const [error, setError] = useState("");
   const [tieCandidates, setTieCandidates] = useState(null);
   const [diceRolls, setDiceRolls] = useState(null);
@@ -335,19 +349,22 @@ export default function BilliardsTracker() {
   }, [loaded]);
 
   useEffect(() => {
-    if (loaded && data.activeGames.length) {
+    if (loaded && (data.activeGames.length || data.players.length || readLocal("billiards-last-discipline"))) {
       // Returning to a match already in progress — light and menu appear
       // together, no delayed reveal (that's only for the first discipline
       // pick on a fresh gate screen).
       setTableLit(true);
       setMenuVisible(true);
+      const resumed = data.activeGames.find(g => g.id === gameIdRef.current);
+      if (resumed && resumed.participants.length === 2 && !resumed.kolhoz) setGameMode(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
 
   const handleGatePick = (type) => {
     setGameType(type);
-    setTimeout(() => setMenuVisible(true), 1000);
+    writeLocal("billiards-last-discipline", type);
+    setMenuVisible(true);
   };
 
   useEffect(() => {
@@ -392,7 +409,7 @@ export default function BilliardsTracker() {
     });
     const stopNativeAuth = onNativeAuthReturn({
       onSuccess: () => { setAuthStatus("idle"); setAuthError(""); },
-      onError: (error) => { setAuthStatus("error"); setAuthError(error.message); setTab("settings"); },
+      onError: (error) => { setAuthStatus("error"); setAuthError(error.message); setTab("settings"); setSettingsPage("club"); },
     });
     return () => {
       active = false;
@@ -776,6 +793,9 @@ export default function BilliardsTracker() {
   const openGame = (id) => {
     haptic("light");
     setCurrentGameId(id);
+    const opening = data.activeGames.find(g => g.id === id);
+    setGameMode(!!opening && opening.participants.length === 2 && !opening.kolhoz);
+    setSetupOpen(false);
     setTieCandidates(null);
     setTableLit(true);
     setMenuVisible(true);
@@ -809,6 +829,39 @@ export default function BilliardsTracker() {
     });
   };
 
+  const beginSetup = (preset = null) => {
+    setSetupOpen(true); setTab("play"); setTableLit(true); setMenuVisible(true); setError("");
+    if (preset) {
+      const valid = preset.participants.filter(id => data.players.some(p => p.id === id));
+      const available = valid.filter(id => !busyNow.has(id));
+      setSelected(available);
+      if (available.length !== valid.length) setError("Некоторые игроки уже за столом. Выберите свободный состав.");
+      updateData(prev => ({ ...prev, gameType: preset.gameType === "pool" ? "pool" : "russian", russianMode: RUSSIAN_MODES[preset.mode] ? preset.mode : "free" }));
+      setHandicaps(preset.targets || {}); setSeriesPick([1,2,3,4,5].includes(preset.seriesPick) ? preset.seriesPick : 1);
+    }
+    window.scrollTo({ top: 0, behavior: "instant" });
+  };
+  const rememberSetup = () => {
+    if (!selected.length) return;
+    const preset = { id: uid(), name: presetLabel.trim() || selected.map(nameById).join(" · "), participants: [...selected], gameType: data.gameType || "russian", mode: data.russianMode || "free", targets: { ...handicaps }, seriesPick };
+    try { setPresets(savePreset(window.localStorage, preset)); setPresetDraft(false); setPresetLabel(""); }
+    catch { setError("Не удалось сохранить настройки на устройстве"); }
+  };
+  const discardPreset = id => {
+    try { setPresets(removePreset(window.localStorage, id)); }
+    catch { setError("Не удалось удалить шаблон"); }
+  };
+  const makeResultCard = async match => {
+    setCardBusy(true);
+    try {
+      const label = match.mode && RUSSIAN_MODES[match.mode] ? RUSSIAN_MODES[match.mode].name : GAME_TYPES[match.gameType || "russian"].label;
+      const blob = await renderResultCard(match, nameById, label);
+      setResultCard({ blob, url: URL.createObjectURL(blob) });
+    } catch { window.alert("Не удалось создать карточку результата. Можно отправить результат текстом."); }
+    finally { setCardBusy(false); }
+  };
+  const closeResultCard = () => { if (resultCard) URL.revokeObjectURL(resultCard.url); setResultCard(null); };
+
   const startGame = () => {
     if (selected.length < 1) return;
     const busy = selected.filter((id) => busyPlayerIds(data.activeGames).has(id));
@@ -837,6 +890,8 @@ export default function BilliardsTracker() {
       return { ...prev, activeSeries, activeGames: [...prev.activeGames, game] };
     });
     setCurrentGameId(game.id);
+    setSetupOpen(false);
+    if (selected.length === 2 && mode !== "kolhoz") setGameMode(true);
     setSelected([]);
     setDiceRolls(null);
     setHandicaps({});
@@ -852,6 +907,8 @@ export default function BilliardsTracker() {
     const game = newGame({ participants, gameType, mode, targets });
     updateData((prev) => ({ ...prev, activeGames: [...prev.activeGames, game] }));
     setCurrentGameId(game.id);
+    setSetupOpen(false);
+    setGameMode(participants.length === 2 && mode !== "kolhoz");
     setVictory(null);
     setTab("play");
   };
@@ -1753,6 +1810,7 @@ export default function BilliardsTracker() {
 
   const nativeBackRef = useRef(null);
   nativeBackRef.current = () => {
+    if (resultCard) return closeResultCard();
     if (showOnboarding) return dismissOnboarding();
     if (tieCandidates) return setTieCandidates(null);
     if (scoreWheelPid) return setScoreWheelPid(null);
@@ -1765,6 +1823,8 @@ export default function BilliardsTracker() {
     if (selectedMatchId) return setSelectedMatchId(null);
     if (gameMode) return setGameMode(false);
     if (currentGameId) return leaveToGameList();
+    if (tab === "settings" && settingsPage) return setSettingsPage(null);
+    if (tab === "play" && setupOpen) return setSetupOpen(false);
     if (tab !== "play") return setTab("play");
     flushPersist();
     minimizeNativeApp();
@@ -1810,7 +1870,7 @@ export default function BilliardsTracker() {
   }
 
   const dark = data.theme === "dark";
-  const styles = makeStyles(dark);
+  const styles = makeStyles(dark, data.gameType || "russian");
   const busyNow = busyPlayerIds(data.activeGames);
   const isKolhoz = (data.gameType || "russian") === "russian" && (data.russianMode || "free") === "kolhoz";
   const immersive = !!(activeGame && gameMode);
@@ -1914,17 +1974,6 @@ export default function BilliardsTracker() {
         .wheel-scroll::-webkit-scrollbar { display: none; }
         .wheel-scroll { scrollbar-width: none; }
         .fs-overlay { position: fixed; inset: 0; z-index: 40; }
-        @media (orientation: portrait) {
-          .fs-overlay {
-            top: 50%;
-            left: 50%;
-            right: auto;
-            bottom: auto;
-            width: 100vh;
-            height: 100vw;
-            transform: translate(-50%, -50%) rotate(90deg);
-          }
-        }
         @media print {
           .no-print { display: none !important; }
         }
@@ -1942,7 +1991,7 @@ export default function BilliardsTracker() {
         />
       </div>
 
-      <div style={styles.page}>
+      <div className="modern-app" data-theme={dark ? "dark" : "light"} data-game={data.gameType || "russian"} style={styles.page}>
         {isOffline && (
           <div style={styles.offlineBanner} className="no-print">
             📡 Нет соединения — партии сохраняются на устройстве и синхронизируются, когда сеть вернётся
@@ -1959,7 +2008,8 @@ export default function BilliardsTracker() {
                 <SyncBadge status={isOffline ? "offline" : clubSync} compact />
               </div>
             )}
-            <div style={styles.gameTypeSwitch} role="tablist" aria-label="Дисциплина">
+            <div className="brand-row"><div><span className="brand-eyebrow">ТВОЙ БИЛЬЯРД</span><h1 className="page-heading">{tab === "play" ? activeGame ? "За столом" : setupOpen ? "Новая партия" : "Играть" : tab === "history" ? "История" : tab === "rating" ? "Статистика" : ({club:"Клуб",appearance:"Внешний вид",data:"Копии и экспорт",help:"Помощь",about:"О приложении"}[settingsPage] || "Ещё")}</h1></div><span className="brand-ball" aria-hidden="true">8</span></div>
+            {tab === "play" && !activeGame && <div style={styles.gameTypeSwitch} role="tablist" aria-label="Дисциплина">
               <button
                 type="button"
                 role="tab"
@@ -1984,14 +2034,16 @@ export default function BilliardsTracker() {
               >
                 <GameIcon type="pool" size={13} /> Pool
               </button>
-            </div>
+            </div>}
           </header>
         )}
 
         <main style={styles.main} key={tab} className="tab-fade">
           {tab === "play" && (
             <section>
-              {!activeGame && anyGameRunning && (
+              {!activeGame && !setupOpen && <HomeHub data={data} nameById={nameById} onNew={() => beginSetup()} onOpen={openGame} onRecent={beginSetup} presets={presets} onPreset={beginSetup} onRemovePreset={discardPreset} />}
+              {!activeGame && setupOpen && <div className="setup-heading"><button className="screen-back" onClick={() => setSetupOpen(false)}>‹ Главная</button><span className="setup-note">Игроки → дисциплина → старт</span></div>}
+              {!activeGame && setupOpen && anyGameRunning && (
                 <div style={styles.cardFrosted}>
                   <div style={styles.liveHeader}>
                     <span style={styles.liveDot} />
@@ -2032,7 +2084,7 @@ export default function BilliardsTracker() {
                 </div>
               )}
 
-              {!activeGame && (
+              {!activeGame && setupOpen && (
                 <div style={styles.card}>
                   <h2 style={styles.h2}>Игроки</h2>
                   <div style={styles.addRow}>
@@ -2065,7 +2117,7 @@ export default function BilliardsTracker() {
                 </div>
               )}
 
-              {!activeGame && !data.activeBracket && (
+              {!activeGame && setupOpen && !data.activeBracket && (
                 <div style={styles.card}>
                   <h2 style={styles.h2}>Начать партию</h2>
                   {(data.gameType || "russian") === "russian" && (
@@ -2123,6 +2175,7 @@ export default function BilliardsTracker() {
                         <button
                           key={p.id}
                           onClick={() => toggleSelect(p.id)}
+                          aria-pressed={selected.includes(p.id)}
                           disabled={atTable && !selected.includes(p.id)}
                           title={atTable ? "Сейчас играет за другим столом" : undefined}
                           style={{
@@ -2303,6 +2356,10 @@ export default function BilliardsTracker() {
                 </div>
               )}
 
+              {!activeGame && setupOpen && !data.activeBracket && <div style={styles.card} className="preset-save">
+                <button style={styles.diceBtn} disabled={!selected.length} onClick={() => setPresetDraft(!presetDraft)}>Сохранить настройки партии</button>
+                {presetDraft && <div className="preset-input" style={{ marginTop: 12 }}><input style={styles.input} aria-label="Название шаблона" placeholder="Например, вечерняя американка" maxLength={80} value={presetLabel} onChange={e => setPresetLabel(e.target.value)} /><button style={styles.brassBtn} onClick={rememberSetup}>Сохранить шаблон</button></div>}
+              </div>}
               {!activeGame && data.activeBracket && (
                 <div style={styles.card}>
                   <h2 style={styles.h2}>
@@ -2427,13 +2484,13 @@ export default function BilliardsTracker() {
                           </button>
                         </div>
                       )}
-                      <div style={styles.fsZones}>
+                      <div style={styles.fsZones} className="fs-zones">
                         {(kolhoz ? kolhoz.order : activeGame.participants).map((pid) => (
                           <div
                             key={pid}
                             style={{
                               ...styles.fsZone,
-                              background: `radial-gradient(120% 90% at 50% 0%, ${playerColor(pid)}b3 0%, ${playerColor(pid)}3d 38%, rgba(10,26,20,0.98) 82%)`,
+                              background: `linear-gradient(160deg, ${playerColor(pid)}48, #10231b 68%)`,
                             }}
                             onPointerDown={() => addPoint(pid, step, { fast: true })}
                             onClick={(e) => {
@@ -2691,9 +2748,9 @@ export default function BilliardsTracker() {
                     <button style={styles.finishBtn} onClick={attemptFinish}>
                       Завершить партию
                     </button>
-                    <button style={styles.cancelBtn} onClick={cancelGame}>
+                    <details className="game-actions"><summary>Ещё действия ···</summary><button style={styles.cancelBtn} onClick={cancelGame}>
                       Отменить партию
-                    </button>
+                    </button></details>
                   </div>
                 </div>
                 );
@@ -2720,9 +2777,11 @@ export default function BilliardsTracker() {
 
           {tab === "rating" && (
             <section>
-              <StatsFilters filters={statsFilter} onChange={setStatsFilter} styles={styles} />
+              <div className="stats-tabs" role="group" aria-label="Раздел статистики">{[["overview","Обзор"],["players","Игроки"],["charts","Графики"],["records","Рекорды"]].map(([key,label]) => <button key={key} aria-pressed={statsView === key} onClick={() => setStatsView(key)}>{label}</button>)}</div>
+              <details className="filter-disclosure"><summary>Период и дисциплина · {PERIOD_LABELS[statsFilter.period]}</summary><StatsFilters filters={statsFilter} onChange={setStatsFilter} styles={styles} /></details>
+              {statsView === "overview" && <div className="quick-metrics"><div><strong>{fMatches.length}</strong><span>партий</span></div><div><strong>{fStats.filter(x => x.games > 0).length}</strong><span>играли</span></div><div><strong>{Math.max(0,...fStats.map(x => x.currentStreak))}</strong><span>лучшая серия сейчас</span></div></div>}
 
-              <div style={styles.card}>
+              <>{statsView === "charts" && (<div style={styles.card}>
                 <h2 style={styles.h2}>Статистика</h2>
                 <Suspense fallback={<div style={{ ...styles.hint, textAlign: "center", padding: "40px 0" }}>Загрузка графика…</div>}>
                   <RatingChartPanel
@@ -2736,9 +2795,9 @@ export default function BilliardsTracker() {
                     playerColor={playerColor}
                   />
                 </Suspense>
-              </div>
+              </div>)}</>
 
-              <div style={styles.card}>
+              <>{statsView === "players" && (<div style={styles.card}>
                 <h2 style={styles.h2}>Рейтинг игроков</h2>
                 {fStats.length === 0 ? (
                   <EmptyState text="Пока нет данных — сыграйте первую партию" />
@@ -2778,9 +2837,9 @@ export default function BilliardsTracker() {
                     <p style={styles.hint}>Нажмите на игрока — откроется его карточка. Эло: старт 1000, учитывает силу соперника.</p>
                   </>
                 )}
-              </div>
+              </div>)}</>
 
-              <div style={styles.card}>
+              <>{statsView === "records" && (<div style={styles.card}>
                 <h2 style={styles.h2}>Лучшие серии побед</h2>
                 {streakLeaders.length === 0 ? (
                   <EmptyState text="Серий побед пока не было" />
@@ -2797,9 +2856,9 @@ export default function BilliardsTracker() {
                     ))}
                   </ol>
                 )}
-              </div>
+              </div>)}</>
 
-              <div style={styles.card}>
+              <>{statsView === "records" && (<div style={styles.card}>
                 <h2 style={styles.h2}>Рекорды</h2>
                 {!records.fastest && !records.longest && !records.blow && !records.bestBreaker ? (
                   <p style={styles.emptyText}>Сыграйте пару партий вдвоём — рекорды появятся здесь.</p>
@@ -2834,9 +2893,9 @@ export default function BilliardsTracker() {
                     )}
                   </div>
                 )}
-              </div>
+              </div>)}</>
 
-              <div style={styles.card}>
+              <>{statsView === "records" && (<div style={styles.card}>
                 <h2 style={styles.h2}>Достижения</h2>
                 {stats.filter((s) => (achievements[s.id] || []).length > 0).length === 0 ? (
                   <EmptyState text="Играйте — значки будут копиться автоматически" />
@@ -2858,9 +2917,9 @@ export default function BilliardsTracker() {
                       </div>
                     ))
                 )}
-              </div>
+              </div>)}</>
 
-              <div style={styles.card}>
+              <>{statsView === "players" && (<div style={styles.card}>
                 <h2 style={styles.h2}>Личные встречи</h2>
                 {data.players.length < 2 ? (
                   <p style={styles.emptyText}>Нужно минимум два игрока.</p>
@@ -2916,19 +2975,19 @@ export default function BilliardsTracker() {
                     )}
                   </div>
                 )}
-              </div>
+              </div>)}</>
 
-              <div style={styles.card}>
+              <>{statsView === "overview" && (<div style={styles.card}>
                 <h2 style={styles.h2}>Активность</h2>
                 <ActivityCard activity={activity} styles={styles} />
-              </div>
+              </div>)}</>
 
-              <div style={styles.card}>
+              <>{statsView === "overview" && (<div style={styles.card}>
                 <h2 style={styles.h2}>Итоги {PERIOD_LABELS[statsFilter.period]}</h2>
                 <SummaryCard summary={summary} periodLabel={PERIOD_LABELS[statsFilter.period]} styles={styles} />
-              </div>
+              </div>)}</>
 
-              <div style={styles.card}>
+              <>{statsView === "players" && (<div style={styles.card}>
                 <h2 style={styles.h2}>Статистика по игрокам</h2>
                 {fStats.length === 0 ? (
                   <p style={styles.emptyText}>Сыгранных партий пока нет.</p>
@@ -2970,7 +3029,7 @@ export default function BilliardsTracker() {
                     </table>
                   </div>
                 )}
-              </div>
+              </div>)}</>
             </section>
           )}
 
@@ -3003,14 +3062,16 @@ export default function BilliardsTracker() {
                 <EmptyState text="Партий не найдено" />
               ) : (
                 <ul style={styles.historyList}>
-                  {filteredHistory.map((m) => (
-                    <li key={m.id} style={styles.historyItem} onClick={() => setSelectedMatchId(m.id)}>
+                  {[...filteredHistory].sort((a,b) => new Date(b.date)-new Date(a.date)).map((m, index, list) => (
+                  <React.Fragment key={m.id}>
+                    {(index === 0 || historyDay(m.date) !== historyDay(list[index-1].date)) && <li className="history-day">{historyDay(m.date)}</li>}
+                    <li className={`history-row ${m.participants.length > 2 ? "history-many" : ""}`} style={styles.historyItem} onClick={() => setSelectedMatchId(m.id)} tabIndex={0} onKeyDown={e => { if(e.key === "Enter" && e.target === e.currentTarget) setSelectedMatchId(m.id); }}>
                       <div>
                         <div style={styles.historyPlayers}>
                           {m.participants.map((pid, i) => (
                             <span key={pid}>
                               <span style={pid === m.winnerId ? styles.winnerName : undefined}>
-                                {nameById(pid)} {m.scores ? `(${m.scores[pid] || 0})` : ""}
+                                {nameById(pid)}
                                 {pid === m.breakerId ? <IconTarget size={11} /> : ""}
                               </span>
                               {i < m.participants.length - 1 ? " · " : ""}
@@ -3031,18 +3092,11 @@ export default function BilliardsTracker() {
                           {m.solo ? " · тренировка" : ""}
                         </div>
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteMatch(m.id);
-                        }}
-                        style={styles.deleteBtn}
-                        aria-label="Удалить партию"
-                        className="no-print"
-                      >
-                        ×
-                      </button>
-                    </li>
+                      <strong className="history-score">{m.participants.map(id => m.scores?.[id] || 0).join(" : ")}</strong>
+                      <div className="actions-host"><button className="actions-trigger" aria-label="Действия с партией" aria-expanded={matchMenu === m.id} onClick={e => { e.stopPropagation(); setMatchMenu(matchMenu === m.id ? null : m.id); }}>⋮</button>
+                        {matchMenu === m.id && <div className="match-action-menu" onClick={e => e.stopPropagation()}><button onClick={() => { setSelectedMatchId(m.id); setMatchMenu(null); }}>Открыть результат</button><button onClick={() => { setMatchMenu(null); deleteMatch(m.id); }}>Удалить партию</button></div>}
+                      </div>
+                    </li></React.Fragment>
                   ))}
                 </ul>
               )}
@@ -3055,31 +3109,18 @@ export default function BilliardsTracker() {
 
           {tab === "settings" && (
             <section>
-              <InstallCard styles={styles} />
+              {!settingsPage && <><SettingsIndex onOpen={setSettingsPage} club={club} theme={data.theme} /><p className="experiment-note">Новый интерфейс · пробная версия. Классический вид доступен в «О приложении».</p></>}
+              {settingsPage && <button className="screen-back" onClick={() => setSettingsPage(null)}>‹ Все настройки</button>}
+              {settingsPage === "help" && <><div style={styles.card}><h2 style={styles.h2}>Знакомство с приложением</h2>                <button style={{ ...styles.ghostBtn, marginTop: "10px", padding: 0 }} onClick={() => setShowOnboarding(true)}>
+                  ℹ️ Показать обучение ещё раз
+                </button></div><InstallCard styles={styles} /></>}
 
-              <div style={styles.card}>
-                <h2 style={styles.h2}>Тип игры</h2>
-                <p style={styles.hint}>Выбор влияет на оформление стола и отмечается в каждой партии</p>
-                <div style={styles.chipRow}>
-                  {Object.entries(GAME_TYPES).map(([key, info]) => (
-                    <button
-                      key={key}
-                      onClick={() => setGameType(key)}
-                      style={{
-                        ...styles.selectChip,
-                        ...((data.gameType || "russian") === key ? styles.selectChipActive : {}),
-                      }}
-                    >
-                      <GameIcon type={key} size={14} /> {info.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              <div style={styles.card}>
+
+              <>{settingsPage === "appearance" && (<div style={styles.card}>
                 <h2 style={styles.h2}>Оформление</h2>
                 <div style={styles.settingRow}>
-                  <span>🌙 Тёмная тема</span>
+                  <span>Тёмная тема</span>
                   <button
                     onClick={toggleTheme}
                     role="switch"
@@ -3090,12 +3131,11 @@ export default function BilliardsTracker() {
                     <span style={{ ...styles.switchThumb, ...(dark ? styles.switchThumbOn : {}) }} />
                   </button>
                 </div>
-                <button style={{ ...styles.ghostBtn, marginTop: "10px", padding: 0 }} onClick={() => setShowOnboarding(true)}>
-                  ℹ️ Показать обучение ещё раз
-                </button>
-              </div>
+                <div className="native-haptics-row"><span>Вибрация при счёте</span><button className="toggle-pill" aria-pressed={hapticsEnabled} onClick={() => { const next = !hapticsEnabled; setHapticsEnabled(next); writeLocal("billiards-haptics", next ? "on" : "off"); }}>{hapticsEnabled ? "Включена" : "Выключена"}</button></div>
 
-              <div style={styles.card}>
+              </div>)}</>
+
+              <>{settingsPage === "data" && (<div style={styles.card}>
                 <h2 style={styles.h2}>Экспорт</h2>
                 <p style={styles.hint}>Скачайте историю и статистику таблицей (CSV — открывается в Excel и Google Таблицах), или откройте печать, чтобы сохранить как PDF.</p>
                 <div style={styles.settingBtnRow}>
@@ -3106,10 +3146,10 @@ export default function BilliardsTracker() {
                     🖨️ PDF (печать)
                   </button>
                 </div>
-              </div>
+              </div>)}</>
 
               {isCloudConfigured() && (
-                <div style={styles.card}>
+                <>{settingsPage === "club" && (<div style={styles.card}>
                   <h2 style={styles.h2}>Общий доступ (клуб)</h2>
                   {!authSession && (
                     <>
@@ -3234,6 +3274,10 @@ export default function BilliardsTracker() {
                     <>
                       <div style={{ ...styles.breakerBanner, textAlign: "left" }}>
                         Клуб: <strong>{club.name}</strong>
+                        <button style={{ ...styles.diceBtn, width: "100%", marginTop: 12 }} onClick={async () => {
+                          const text = `Приглашаю в «Твой бильярд»! Код клуба: ${club.code}. Открой приложение → Ещё → Клуб → Войти по коду. https://antonkuznetsov1911.github.io/Billiard-Score/`;
+                          try { if (await shareText({ text, title: "Приглашение в клуб" })) return; await navigator.clipboard.writeText(text); setNameMsg("Приглашение скопировано"); } catch { setNameMsg(`Код клуба: ${club.code}`); }
+                        }}>Пригласить в клуб</button>
                         <div style={{ marginTop: "6px" }}>
                           Код приглашения: <span style={styles.mono}>{club.code}</span>
                         </div>
@@ -3279,20 +3323,21 @@ export default function BilliardsTracker() {
                       </div>
                     </>
                   )}
-                </div>
+                </div>)}</>
               )}
 
-              <div style={styles.card}>
+              <>{settingsPage === "about" && (<div style={styles.card}>
                 <h2 style={styles.h2}>О приложении</h2>
+                {onDesignModeChange && <button style={styles.brassBtn} onClick={async () => { await flushPersist(); onDesignModeChange("classic"); }}>Вернуться к классическому интерфейсу</button>}
                 <p><a href="club-rules.html" target="_blank" rel="noopener noreferrer" style={{ color: COLORS.brass }}>Правила клубов</a></p>
                 <p style={styles.hint}>Твой бильярд · {__APP_VERSION__}</p>
                 <p><a href="privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: COLORS.brass }}>Политика конфиденциальности</a></p>
                 <p><a href="https://antonkuznetsov1911.github.io/Billiard-Score/delete-account.html" target="_blank" rel="noopener noreferrer" style={{ color: COLORS.brass }}>Удаление аккаунта</a></p>
                 <p><a href="mailto:x9054074040@gmail.com" style={{ color: COLORS.brass }}>x9054074040@gmail.com</a></p>
-              </div>
-              <FeedbackCard styles={styles} />
+              </div>)}</>
+              {settingsPage === "help" && <FeedbackCard styles={styles} />}
 
-              <div style={styles.card}>
+              <>{settingsPage === "data" && (<div style={styles.card}>
                 <h2 style={styles.h2}>Резервная копия</h2>
                 <p style={styles.hint}>Все партии сохраняются автоматически. Дополнительно можно скачать полную копию данных или восстановить её из файла.</p>
                 <p style={styles.hint}>
@@ -3310,9 +3355,9 @@ export default function BilliardsTracker() {
                   </label>
                 </div>
                 <SafetyCopies copies={safetyCopies} onRestore={restoreSafetyCopy} onDelete={removeSafetyCopy} styles={styles} />
-              </div>
+              </div>)}</>
 
-              <div style={styles.card}>
+              <>{settingsPage === "data" && (<details className="data-danger"><summary>Удаление данных</summary><div style={styles.card}>
                 <h2 style={{ ...styles.h2, color: COLORS.danger }}>Удаление данных</h2>
                 <button style={styles.resetBtn} onClick={clearAll}>
                   Очистить все данные
@@ -3334,7 +3379,7 @@ export default function BilliardsTracker() {
                     </button>
                   </>
                 )}
-              </div>
+              </div></details>)}</>
             </section>
           )}
         </main>
@@ -3342,16 +3387,19 @@ export default function BilliardsTracker() {
         {!immersive && (
           <nav style={styles.bottomNav} className="no-print">
             {[
-              ["play", "Игра", <NavCue size={20} />],
-              ["rating", "Рейтинг", <NavTrophy size={20} />],
-              ["history", "История", <NavClock size={20} />],
-              ["settings", "Ещё", <NavGear size={20} />],
+              ["play", "Игра", <LineIcon name="play" />],
+              ["history", "История", <LineIcon name="history" />],
+              ["rating", "Статистика", <LineIcon name="rating" />],
+              ["settings", "Ещё", <LineIcon name="settings" />],
             ].map(([key, label, icon]) => (
               <button
                 key={key}
                 onClick={() => {
                   haptic("light");
                   setTab(key);
+                  if (key === "settings") setSettingsPage(null);
+                  setMatchMenu(null);
+                  window.scrollTo({ top: 0, behavior: "instant" });
                 }}
                 style={{
                   ...styles.bottomNavBtn,
@@ -3376,6 +3424,7 @@ export default function BilliardsTracker() {
       </div>
 
       <Confetti active={celebrate} />
+      {resultCard && <div style={{ ...styles.modalOverlay, zIndex: 90 }} role="dialog" aria-label="Карточка результата" onClick={closeResultCard}><div style={styles.modalCard} onClick={e => e.stopPropagation()}><h2 style={styles.h2}>Карточка результата</h2><img className="result-preview" src={resultCard.url} alt="Счёт и участники завершённой партии" /><div className="result-actions"><button style={styles.brassBtn} onClick={() => shareImageBlob(resultCard.blob, `billiards-result-${Date.now()}.png`).catch(e => { if(e.name !== "AbortError") window.alert("Не удалось отправить карточку. Попробуйте ещё раз."); })}>Сохранить или отправить</button><button style={styles.diceBtn} onClick={closeResultCard}>Закрыть карточку</button></div></div></div>}
 
       {selectedMatch && (
         <div
@@ -3494,6 +3543,7 @@ export default function BilliardsTracker() {
                   <button style={{ ...styles.diceBtnSolid, flex: 1 }} onClick={() => startEditMatch(selectedMatch)}>
                     ✏️ Исправить счёт
                   </button>
+                  <button style={{ ...styles.diceBtnSolid, flex: 1 }} disabled={cardBusy} onClick={() => makeResultCard(selectedMatch)}>Карточка результата</button>
                   <button style={{ ...styles.cancelBtn, flex: 1 }} onClick={() => setSelectedMatchId(null)}>
                     Закрыть
                   </button>
@@ -3654,11 +3704,12 @@ export default function BilliardsTracker() {
                   🔄 Ещё одна тренировка
                 </button>
               )}
+              <button style={{ ...styles.brassBtn, width: "100%" }} disabled={cardBusy} onClick={() => makeResultCard(victory)}>{cardBusy ? "Создаём карточку…" : "Карточка результата"}</button>
               <button style={{ ...styles.diceBtn, width: "100%" }} onClick={shareVictory}>
                 📤 Поделиться результатом
               </button>
               <button style={{ ...styles.finishBtn, width: "100%" }} onClick={closeVictory}>
-                {victory.bracket ? "К турнирной сетке" : "К рейтингу"}
+                {victory.bracket ? "К турнирной сетке" : "К статистике"}
               </button>
             </div>
           </div>

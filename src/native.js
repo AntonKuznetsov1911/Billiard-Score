@@ -4,6 +4,27 @@ import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 
 const NativePrint = registerPlugin("BilliardPrint");
+const NativeUX = registerPlugin("BilliardUX");
+
+export function nativeHaptic(type = "light") {
+  try { if (window.localStorage.getItem("billiards-haptics") === "off") return; } catch { /* Optional preference. */ }
+  if (isNativeApp()) NativeUX.tap({ type }).catch(() => {});
+}
+
+export async function shareImageBlob(blob, filename) {
+  if (isNativeApp()) {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 32768) binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
+    const file = await Filesystem.writeFile({ path: `exports/${filename}`, data: btoa(binary), directory: Directory.Cache, recursive: true });
+    await Share.share({ title: "Результат партии", files: [file.uri], dialogTitle: "Сохранить или отправить карточку" });
+    return;
+  }
+  const file = new File([blob], filename, { type: "image/png" });
+  if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], title: "Твой бильярд" }); return; }
+  const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 export function isNativeApp() {
   try {

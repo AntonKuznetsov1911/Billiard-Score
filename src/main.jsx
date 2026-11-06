@@ -1,7 +1,7 @@
 import React from "react";
 import "./fonts.js";
 import { createRoot } from "react-dom/client";
-import BilliardsTracker from "./BilliardsTracker.jsx";
+import DesignShell from "./DesignShell.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import UpdateBanner from "./UpdateBanner.jsx";
 import { pingUsage } from "./analytics.js";
@@ -36,10 +36,10 @@ if (typeof window !== "undefined" && !window.storage) {
 
 createRoot(document.getElementById("root")).render(
   <ErrorBoundary>
-    <BilliardsTracker />
+    <DesignShell />
     <UpdateBanner />
   </ErrorBoundary>
 );
 
 // Anonymous daily usage count, after the app has started.
-setTimeout(pingUsage, 3000);
+if (!__APP_VERSION__.includes("preview")) setTimeout(pingUsage, 3000);

@@ -1,7 +1,7 @@
 // All inline styles of the main screen, per theme (see makeStyles).
 import { COLORS } from "./constants.js";
 
-export function makeStyles(dark) {
+export function makeStyles(dark, gameType = "russian") {
   const T = dark
     ? {
         cardBg: "rgba(20,22,18,0)",
@@ -58,7 +58,10 @@ export function makeStyles(dark) {
         pickActiveText: "#2A1D0A",
       };
 
-  return {
+  const accent = gameType === "pool" ? (dark ? "#91bfdf" : "#24658b") : (dark ? "#abd0b7" : "#276143");
+  Object.assign(T, { cardBg: dark ? "#14241d" : "#ffffff", cardBgFrosted: dark ? "#14241d" : "#ffffff", cardBorder: dark ? "#293c32" : "#e1e6dc", text: dark ? "#f0f4ee" : "#18291f", sub: dark ? "#a5b4a9" : "#647168", solidText: dark ? "#f0f4ee" : "#18291f", solidSub: dark ? "#a5b4a9" : "#647168", inputBg: dark ? "#0c1b14" : "#f4f6ef", inputBorder: dark ? "#354d3e" : "#d8e0d3", chipBg: dark ? "#1c3125" : "#f0f4ea", chipBorder: dark ? "#354d3e" : "#d8e0d3", pickText: T.text, pickBorder: dark ? "#48604f" : "#b8c8b4", pickActiveBg: dark ? "#b7cda5" : "#294f3a", pickActiveText: dark ? "#112116" : "#fff", rowBorder: dark ? "#2b3c31" : "#e6eadf", modalBg: dark ? "#14241d" : "#fff" });
+  if (gameType === "pool") Object.assign(T, { cardBg: dark ? "#142330" : "#ffffff", inputBg: dark ? "#0d1b26" : "#f0f4f8", cardBorder: dark ? "#2c404f" : "#dce4eb", rowBorder: dark ? "#2c404f" : "#e2e8ef", pickActiveBg: dark ? "#b0d0e4" : "#255b7c", pickActiveText: dark ? "#142632" : "#fff" });
+  const base = {
     outerBg: { position: "fixed", inset: 0, zIndex: 0, overflow: "hidden" },
     outerOverlay: {
       position: "absolute",
@@ -519,5 +522,47 @@ export function makeStyles(dark) {
     modalCard: { background: T.modalBg, borderRadius: "16px", padding: "20px", maxWidth: "400px", width: "100%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 10px 30px rgba(0,0,0,0.4)", color: T.solidText },
     modalScores: { display: "flex", flexDirection: "column", gap: "6px", margin: "12px 0" },
     modalRow: { display: "flex", justifyContent: "space-between", fontSize: "14px", padding: "6px 0", borderBottom: `1px solid ${T.rowBorder}`, color: T.solidText },
+  };
+  const panel = { background: T.cardBg, border: `1px solid ${T.cardBorder}`, borderRadius: 22, padding: 20, marginBottom: 16, backdropFilter: "none", WebkitBackdropFilter: "none", boxShadow: dark ? "none" : "0 4px 24px #1f382109" };
+  const action = { minHeight: 48, borderRadius: 14, padding: "12px 16px", fontSize: 14, fontWeight: 650, cursor: "pointer" };
+  return { ...base,
+    outerBg: { ...base.outerBg, opacity: .055 },
+    page: { ...base.page, textShadow: "none", minHeight: "100dvh" },
+    header: { ...base.header, padding: "calc(20px + env(safe-area-inset-top)) 20px 16px", background: "none", textAlign: "left", maxWidth: 600, margin: "0 auto" },
+    main: { ...base.main, maxWidth: 600, padding: "0 20px" },
+    card: panel, cardFrosted: panel,
+    h2: { ...base.h2, fontFamily: "Inter, sans-serif", fontSize: 18, letterSpacing: "-.4px", borderLeft: "none", paddingLeft: 0, color: T.text, marginBottom: 16 },
+    input: { ...base.input, minHeight: 48, minWidth: 0, borderRadius: 13, padding: "12px 14px", boxSizing: "border-box" },
+    brassBtn: { ...base.brassBtn, ...action, background: gameType === "pool" ? dark ? "#b0d0e4" : "#255b7c" : dark ? "#bfd2aa" : "#244d35", color: dark ? "#14231a" : "#fff" },
+    diceBtn: { ...base.diceBtn, ...action, border: `1px solid ${T.chipBorder}`, background: T.inputBg, color: T.text, backdropFilter: "none", WebkitBackdropFilter: "none" },
+    ghostBtn: { ...base.ghostBtn, minHeight: 48, color: accent, fontSize: 13, padding: "10px 8px" },
+    selectChip: { ...base.selectChip, minHeight: 48, padding: "10px 14px", fontSize: 13, borderWidth: 1, color: T.text, backdropFilter: "none", WebkitBackdropFilter: "none" },
+    selectChipActive: { background: T.pickActiveBg, color: T.pickActiveText, borderColor: T.pickActiveBg },
+    playerChip: { ...base.playerChip, minHeight: 42, background: T.inputBg, backdropFilter: "none", WebkitBackdropFilter: "none" },
+    chipRemove: { ...base.chipRemove, width: 36, height: 40 },
+    finishBtn: { ...base.finishBtn, ...action }, cancelBtn: { ...base.cancelBtn, ...action }, resetBtn: { ...base.resetBtn, ...action },
+    bottomNav: { ...base.bottomNav, background: dark ? "#101e18f5" : "#fbfcf7f5", borderTop: `1px solid ${T.cardBorder}`, backdropFilter: "blur(18px)", padding: "8px 14px calc(8px + env(safe-area-inset-bottom))" },
+    bottomNavBtn: { ...base.bottomNavBtn, minHeight: 54, gap: 5, color: T.sub, fontSize: 11, borderRadius: 16 },
+    bottomNavBtnActive: { background: dark ? "#28402e" : "#e5eddd", color: dark ? "#d4e4c6" : "#244d35" },
+    gameTypeSwitch: { ...base.gameTypeSwitch, display: "flex", width: "fit-content", marginTop: 18, background: T.inputBg, border: `1px solid ${T.chipBorder}`, padding: 4, backdropFilter: "none", WebkitBackdropFilter: "none" },
+    gameTypeSwitchBtn: { ...base.gameTypeSwitchBtn, minHeight: 44, padding: "8px 18px", color: T.sub },
+    gameTypeSwitchBtnActive: { background: T.cardBg, color: T.text, boxShadow: "0 2px 8px #00000012" },
+    scoreRow: { ...base.scoreRow, background: T.inputBg, boxShadow: "none" },
+    scoreBtnMinus: { ...base.scoreBtnMinus, minWidth: 48, minHeight: 48 },
+    scoreInput: { ...base.scoreInput, minHeight: 48, color: T.text, background: T.inputBg },
+    historyItem: { ...base.historyItem, padding: "16px 0", gap: 12 },
+    historyPlayers: { ...base.historyPlayers, fontSize: 15, lineHeight: 1.6 },
+    historyDate: { ...base.historyDate, color: T.sub, fontSize: 12 },
+    historyList: { ...base.historyList, margin: 0 },
+    fsOverlay: { ...base.fsOverlay, background: dark ? "#0c1713" : "#f0f3e9", color: T.text, textShadow: "none" },
+    fsTopBar: { ...base.fsTopBar, background: T.cardBg, borderBottom: `1px solid ${T.cardBorder}` },
+    fsTopBtn: { ...base.fsTopBtn, minHeight: 48, color: T.text, fontSize: 13 },
+    fsFinishBtn: { ...base.fsFinishBtn, minHeight: 48, fontSize: 13 },
+    fsZone: { ...base.fsZone, borderRadius: 24, border: `1px solid ${T.cardBorder}`, boxShadow: "none" },
+    fsZoneName: { ...base.fsZoneName, color: "#eef3ea", fontSize: 19 },
+    fsZoneScore: { ...base.fsZoneScore, fontSize: "clamp(64px,18vw,112px)", color: "#f4f4eb", textShadow: "none" },
+    fsZoneEdit: { ...base.fsZoneEdit, minWidth: 48, minHeight: 48 },
+    fsZoneUndo: { ...base.fsZoneUndo, minWidth: 48, minHeight: 48 },
+    rankScore: { ...base.rankScore, fontFamily: "Inter, sans-serif", fontSize: 12 },
   };
 }
