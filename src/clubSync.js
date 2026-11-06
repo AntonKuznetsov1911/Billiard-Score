@@ -116,7 +116,7 @@ export async function createClub(name, displayName) {
 
 export async function joinClub(code, displayName) {
   const client = requireClient();
-  const user = await currentUser();
+  await currentUser();
   const clean = code.trim().toUpperCase();
 
   // Preferred path: the join_club_by_code function (see supabase/hardening.sql),
@@ -136,18 +136,11 @@ export async function joinClub(code, displayName) {
   if (/too_many_attempts/.test(rpcError.message || "")) {
     throw new Error("Слишком много неверных кодов — попробуйте через 15 минут");
   }
-  // Database not hardened yet (function missing): fall back to the legacy lookup.
+  // Joining must always pass through the server's authorization and rate limit.
   const missing = rpcError.code === "PGRST202" || rpcError.code === "42883" || /Could not find the function/i.test(rpcError.message || "");
   if (!missing) throw rpcError;
 
-  const { data: club, error } = await client.from("clubs").select("*").eq("code", clean).maybeSingle();
-  if (error) throw error;
-  if (!club) throw new Error("Клуб с таким кодом не найден");
-  const { error: joinError } = await client
-    .from("club_members")
-    .insert({ club_id: club.id, user_id: user.id, display_name: displayName || null });
-  if (joinError && joinError.code !== "23505") throw joinError; // 23505 — уже состоит в клубе, это ок
-  return club;
+  throw new Error("Вход в клуб требует обновления настроек сервера. Обратитесь в поддержку.");
 }
 
 export async function leaveClub(clubId) {

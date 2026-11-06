@@ -1,4 +1,5 @@
 import { cacheAcceptedState as cacheLocalState } from "./localCache.js";
+import { validateBackupFile, parseBackup } from "./backupImport.js";
 import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from "react";
 import { saveToCloud, loadFromCloud, clearCloud } from "./cloudSync.js";
 import { isCloudConfigured } from "./supabaseClient.js";
@@ -1670,10 +1671,18 @@ export default function BilliardsTracker() {
   const importBackup = (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
+    e.target.value = "";
+    try {
+      validateBackupFile(file);
+    } catch (error) {
+      window.alert(error.message);
+      return;
+    }
     const reader = new FileReader();
+    reader.onerror = () => window.alert("Не удалось прочитать файл резервной копии");
     reader.onload = (ev) => {
       try {
-        const parsed = JSON.parse(ev.target.result);
+        const parsed = parseBackup(ev.target.result);
         if (!window.confirm("Заменить текущие данные резервной копией?")) return;
         takeSafetyCopy("import-backup");
         const next = normalizeData(parsed);
@@ -1683,7 +1692,6 @@ export default function BilliardsTracker() {
       }
     };
     reader.readAsText(file);
-    e.target.value = "";
   };
 
   const activeGame = data.activeGames.find((g) => g.id === currentGameId) || null;
@@ -3076,7 +3084,7 @@ export default function BilliardsTracker() {
                       {(authStatus === "sent" || authStatus === "verifying") && (
                         <>
                           <p style={{ ...styles.hint, color: "#3E9B5C" }}>
-                            Проверьте почту — пришёл 6-значный код. Введите его ниже.
+                            Проверьте почту и введите код из письма ниже.
                           </p>
                           <div style={styles.addRow}>
                             <input

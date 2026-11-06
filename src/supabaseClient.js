@@ -1,8 +1,10 @@
 import { isNativeApp } from "./native.js";
 import { createClient } from "@supabase/supabase-js";
+import { validatePublicConfig } from "./securityConfig.js";
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+validatePublicConfig({ VITE_SUPABASE_URL: url, VITE_SUPABASE_ANON_KEY: anonKey }, { development: import.meta.env.DEV });
 
 // Where *.supabase.co is blocked or throttled (common without a VPN) requests
 // would otherwise hang for minutes and keep the sync badge spinning. They are
@@ -18,14 +20,14 @@ export function fetchWithTimeout(input, init = {}, ms = REQUEST_TIMEOUT_MS) {
     if (init.signal.aborted) controller.abort();
     else init.signal.addEventListener("abort", () => controller.abort(), { once: true });
   }
-  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+  return fetch(input, { ...init, credentials: "omit", signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
 export const supabase =
   url && anonKey
     ? createClient(url, anonKey, {
         global: { fetch: (input, init) => fetchWithTimeout(input, init) },
-        ...(isNativeApp() ? { auth: { flowType: "pkce", detectSessionInUrl: false, persistSession: true, autoRefreshToken: true } } : {}),
+        auth: { flowType: "pkce", detectSessionInUrl: !isNativeApp(), persistSession: true, autoRefreshToken: true },
       })
     : null;
 

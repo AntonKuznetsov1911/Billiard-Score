@@ -24,18 +24,19 @@ export function loadInitial() {
 }
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+const safeKey = (value) => !["__proto__", "constructor", "prototype"].includes(value);
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const cleanStr = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
 const cleanNum = (v, max = 100000) => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(max, v)) : 0);
 const cleanStamp = (v) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
 const cleanScores = (v) => {
   const out = {};
-  if (isObj(v)) Object.keys(v).slice(0, 20).forEach((k) => (out[k] = cleanNum(v[k], 999)));
+  if (isObj(v)) Object.keys(v).filter(safeKey).slice(0, 20).forEach((k) => (out[k] = cleanNum(v[k], 999)));
   return out;
 };
 const cleanSigned = (v, max = 100000) => (typeof v === "number" && Number.isFinite(v) ? Math.max(-max, Math.min(max, Math.round(v))) : 0);
-const cleanPidList = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && x).map((x) => x.slice(0, 64)).slice(0, 20) : []);
-const cleanId = (v) => (typeof v === "string" && v ? v.slice(0, 64) : null);
+const cleanPidList = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string" && x && safeKey(x)).map((x) => x.slice(0, 64)).slice(0, 20) : []);
+const cleanId = (v) => (typeof v === "string" && v && safeKey(v) ? v.slice(0, 64) : null);
 const cleanInt = (v, min, max) => (typeof v === "number" && Number.isInteger(v) && v >= min && v <= max ? v : null);
 const cleanGameType = (v) => (v === "pool" ? "pool" : "russian");
 const cleanMode = (v) => (typeof v === "string" && Object.prototype.hasOwnProperty.call(RUSSIAN_MODES, v) ? v : null);
@@ -65,11 +66,13 @@ function cleanSettlement(v) {
   if (!isObj(v)) return null;
   const out = {};
   Object.keys(v)
+    .filter(safeKey)
     .slice(0, 20)
     .forEach((a) => {
       if (!isObj(v[a])) return;
       out[a] = {};
       Object.keys(v[a])
+        .filter(safeKey)
         .slice(0, 20)
         .forEach((b) => (out[a][b] = cleanSigned(v[a][b])));
     });
@@ -90,7 +93,7 @@ function cleanKolhozRounds(v) {
 // entry can't crash every member's app.
 export function sanitizePlayers(list) {
   return (Array.isArray(list) ? list : [])
-    .filter((p) => isObj(p) && typeof p.id === "string" && p.id && typeof p.name === "string")
+    .filter((p) => isObj(p) && cleanId(p.id) && typeof p.name === "string")
     .slice(0, 200)
     .map((p, i) => ({
       ...p,
@@ -114,8 +117,8 @@ export function sanitizeMatches(list) {
     // stake/kolhozUnit/payments: left by the removed "for money" feature.
     .map(({ stake, kolhozUnit, payments, ...m }) => ({
       ...m,
-      id: typeof m.id === "string" ? m.id.slice(0, 64) : uid(),
-      participants: m.participants.slice(0, 20),
+      id: cleanId(m.id) || uid(),
+      participants: cleanPidList(m.participants),
       winnerId: typeof m.winnerId === "string" ? m.winnerId : null,
       scores: cleanScores(m.scores),
       durationMs: cleanNum(m.durationMs, 7 * 86400000),

@@ -9,7 +9,6 @@ permissions:
 
 jobs:
   build:
-    # Playwright 1.56 has no Chromium build for ubuntu-26.04 (now ubuntu-latest).
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -18,6 +17,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm audit --audit-level=moderate
       - run: npm test
       - run: npm run build
       # UI tests: the real app in Chromium (start a game, taps, undo,

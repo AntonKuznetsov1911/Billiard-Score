@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import pkg from "./package.json" with { type: "json" };
+import { validatePublicConfig } from "./src/securityConfig.js";
 
 // Content-Security-Policy for the built app: code only from the app itself,
 // network only to the app and the club server. Even if some injected markup
@@ -25,17 +26,30 @@ function contentSecurityPolicy(supabaseUrl) {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
+    "frame-src 'none'",
+    "upgrade-insecure-requests",
   ].join("; ");
   return {
     name: "content-security-policy",
     apply: "build",
-    transformIndexHtml: (html) => html.replace("<head>", `<head>\n    <meta http-equiv="Content-Security-Policy" content="${policy}" />`),
+    transformIndexHtml: (html) => html.replace("<head>", `<head>\n    <meta name="referrer" content="no-referrer" />\n    <meta http-equiv="Content-Security-Policy" content="${policy}" />`),
   };
 }
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
+  validatePublicConfig(env, { development: mode === "development" });
+  // Vite serves these headers locally. The production host must also set them.
+  const securityHeaders = {
+    "Content-Security-Policy": "frame-ancestors 'none'",
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  };
   return {
+    server: { headers: securityHeaders },
+    preview: { headers: securityHeaders },
     plugins: [
       react(),
       contentSecurityPolicy(env.VITE_SUPABASE_URL),

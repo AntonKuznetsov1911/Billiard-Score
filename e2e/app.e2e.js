@@ -298,3 +298,45 @@ test("password sign-in opens the authenticated club controls without an email co
   await expect(page.getByText("Вы вошли как review-test@example.com.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Удалить аккаунт", exact: true })).toBeVisible();
 });
+
+test("untrusted player names remain text and oversized backup imports preserve data", async ({ page }) => {
+  const name = "<img src=x onerror=window.__xss=1>";
+  await seed(page, base({ players: [{ id: "safe", name, color: "#0057B8" }] }));
+  await openGame(page);
+  await expect(page.getByText(name, { exact: true })).toBeVisible();
+  await expect(page.locator("img[src=x]")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__xss)).toBeUndefined();
+  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  let warning;
+  page.once("dialog", async (dialog) => {
+    warning = dialog.message();
+    await dialog.dismiss();
+  });
+  await page.locator('input[type="file"]').setInputFiles({ name: "backup.json", mimeType: "application/json", buffer: Buffer.alloc(20 * 1024 * 1024 + 1, 32) });
+  expect(warning).toContain("20 МБ");
+  expect((await stored(page)).players[0].name).toBe(name);
+});
+
+test("invalid backup JSON structure cannot wipe existing players", async ({ page }) => {
+  await seed(page, base());
+  await openGame(page);
+  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  const message = page.waitForEvent("dialog");
+  await page.locator('input[type="file"]').setInputFiles({ name: "backup.json", mimeType: "application/json", buffer: Buffer.from("{}") });
+  const dialog = await message;
+  expect(dialog.type()).toBe("alert");
+  await dialog.dismiss();
+  expect((await stored(page)).players).toEqual(players);
+});
+
+test("production CSP blocks inline script execution", async ({ page }) => {
+  await seed(page, base());
+  await page.goto("/");
+  await expect(page.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveAttribute("content", /script-src 'self'/);
+  await page.evaluate(() => {
+    const script = document.createElement("script");
+    script.textContent = "window.__inlineSecurityProbe = true";
+    document.head.appendChild(script);
+  });
+  expect(await page.evaluate(() => window.__inlineSecurityProbe)).toBeUndefined();
+});
