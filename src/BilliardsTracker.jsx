@@ -71,6 +71,8 @@ import {
   kolhozGross,
   gameStandings,
 } from "./gameLogic.js";
+import { ClubTerms, ClubSafetyCard } from "./ClubSafetyCard.jsx";
+import { acceptedClubTerms, acceptClubTerms, blockedClubs, setClubBlocked, clubSafetyStorage } from "./clubSafety.js";
 import { FeedbackCard } from "./FeedbackCard.jsx";
 import { InstallCard } from "./InstallCard.jsx";
 import { isNativeApp, exportTextFile, shareText, listenToNativeApp, minimizeNativeApp, printReport } from "./native.js";
@@ -203,6 +205,11 @@ export default function BilliardsTracker() {
   const [authCode, setAuthCode] = useState("");
   const [club, setClub] = useState(null);
   const [clubBusy, setClubBusy] = useState(false);
+  const [, setSafetyTick] = useState(0);
+  const clubBlockRef = useRef(null);
+  const clubTermsAccepted = acceptedClubTerms(clubSafetyStorage, authSession?.user?.id);
+  const blockedClubList = blockedClubs(clubSafetyStorage, authSession?.user?.id);
+  const acceptRules = () => { acceptClubTerms(clubSafetyStorage, authSession.user.id); setSafetyTick(t => t + 1); };
   const [clubError, setClubError] = useState("");
   const [clubCodeInput, setClubCodeInput] = useState("");
   const [clubNameInput, setClubNameInput] = useState("");
@@ -400,7 +407,11 @@ export default function BilliardsTracker() {
     (async () => {
       try {
         const myClub = await getMyClub();
-        if (active && myClub) setClub(myClub);
+        if (active && myClub) {
+          if (blockedClubs(clubSafetyStorage, authSession.user.id).some(x => x.id === myClub.id)) {
+            setClubError("Этот клуб заблокирован на устройстве");
+          } else setClub(myClub);
+        }
       } catch (e) {
         // not critical — user just isn't in a club yet
       }
@@ -411,12 +422,12 @@ export default function BilliardsTracker() {
   }, [authSession]);
 
   useEffect(() => {
-    if (!club) return;
+    if (!club || !clubTermsAccepted) return;
     let active = true;
     (async () => {
       try {
         const remote = await fetchClubState(club.id);
-        if (active && remote && remote.data) {
+        if (active && clubBlockRef.current !== club.id && remote && remote.data) {
           const remoteData = normalizeData({ ...remote.data, updatedAt: remote.data.updatedAt || remote.updatedAt });
           // This device already synced with this club before — keep anything done
           // offline since then. Joining fresh, the club's data replaces personal data.
@@ -442,13 +453,13 @@ export default function BilliardsTracker() {
       // Merge rather than replace: another member's taps/matches are added to
       // ours, and an old echo of our own earlier push changes nothing (so the
       // score can't roll back and forth).
-      if (remoteData) setData((prev) => cacheAcceptedState(mergeWithRemote(prev, remoteData)));
+      if (active && clubBlockRef.current !== club.id && remoteData) setData((prev) => cacheAcceptedState(mergeWithRemote(prev, remoteData)));
     });
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [club]);
+  }, [club, clubTermsAccepted]);
 
   useEffect(() => {
     const tg = getTG();
@@ -502,7 +513,7 @@ export default function BilliardsTracker() {
 
   const pushToClub = useCallback(
     (next) => {
-      if (!club) return;
+      if (!club || !clubTermsAccepted || clubBlockRef.current === club.id) return;
       if (clubRetryRef.current) {
         clearTimeout(clubRetryRef.current);
         clubRetryRef.current = null;
@@ -511,6 +522,7 @@ export default function BilliardsTracker() {
       setClubSync("pending");
       pushClubState(club.id, next, mergeWithRemote)
         .then((merged) => {
+          if (clubBlockRef.current === club.id) return;
           setData((prev) => cacheAcceptedState(mergeData(prev, merged)));
           clubInFlightRef.current -= 1;
           if (clubInFlightRef.current === 0 && !pendingPersistRef.current) {
@@ -519,6 +531,7 @@ export default function BilliardsTracker() {
           }
         })
         .catch(() => {
+          if (clubBlockRef.current === club.id) return;
           clubInFlightRef.current -= 1;
           setClubSync("error");
           setClubError("Не удалось синхронизировать с клубом — повторим автоматически");
@@ -533,7 +546,7 @@ export default function BilliardsTracker() {
         });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [club]
+    [club, clubTermsAccepted]
   );
 
   useEffect(() => {
@@ -1391,6 +1404,7 @@ export default function BilliardsTracker() {
   };
 
   const saveMyClubName = async () => {
+    if (!clubTermsAccepted) return;
     if (!club) return;
     const n = rememberMyName();
     setNameMsg("");
@@ -1423,6 +1437,7 @@ export default function BilliardsTracker() {
   }, [club]);
 
   const handleCreateClub = async () => {
+    if (!clubTermsAccepted) return;
     setClubBusy(true);
     setClubError("");
     try {
@@ -1437,11 +1452,15 @@ export default function BilliardsTracker() {
   };
 
   const handleJoinClub = async () => {
-    if (!clubCodeInput.trim()) return;
+    if (!clubCodeInput.trim() || !clubTermsAccepted) return;
     setClubBusy(true);
     setClubError("");
     try {
       const joined = await joinClub(clubCodeInput.trim(), rememberMyName());
+      if (blockedClubList.some(x => x.id === joined.id)) {
+        await leaveClub(joined.id);
+        throw new Error("Клуб заблокирован. Сначала снимите блокировку в разделе ниже.");
+      }
       setClub(joined);
       setClubCodeInput("");
     } catch (e) {
@@ -1481,6 +1500,41 @@ export default function BilliardsTracker() {
       setClubHistoryError(e.message || "Не удалось восстановить");
     } finally {
       setClubHistoryBusy(false);
+    }
+  };
+
+  const handleBlockClub = async () => {
+    if (!club || clubBusy) return;
+    if (!window.confirm("Заблокировать клуб и выйти из него? Текущие игроки и партии клуба будут убраны с этого устройства. Серверные данные участников и ручные резервные копии останутся. Сначала сохраните нужные результаты в JSON-копию.")) return;
+    setClubBusy(true);
+    const blocked = club;
+    let blockStored = false;
+    clubBlockRef.current = club.id;
+    if (clubRetryRef.current) clearTimeout(clubRetryRef.current);
+    try {
+      setClubBlocked(clubSafetyStorage, authSession.user.id, blocked, true);
+      blockStored = true;
+      await leaveClub(club.id);
+      pendingPersistRef.current = null;
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+      await window.storage.set(STORAGE_KEY, JSON.stringify(loadInitial()), false);
+      window.localStorage.removeItem(CLUB_SYNCED_KEY);
+      window.localStorage.removeItem(CURRENT_GAME_KEY);
+      window.location.reload();
+    } catch (error) {
+      if (!blockStored) {
+        clubBlockRef.current = null;
+        setClubBusy(false);
+        setClubError("Не удалось сохранить блокировку на устройстве");
+        return;
+      }
+      // A local block stays in place even when the server cannot be reached.
+      setClub(null);
+      pendingPersistRef.current = null;
+      setData(loadInitial());
+      try { cacheAcceptedState(loadInitial()); } catch { /* Storage failure is reported below. */ }
+      setClubError("Клуб скрыт на устройстве. Выход на сервере мог не завершиться — проверьте соединение и повторите позже.");
+      setClubBusy(false);
     }
   };
 
@@ -3121,6 +3175,14 @@ export default function BilliardsTracker() {
                       </details>
                     </>
                   )}
+                  {authSession && <ClubTerms styles={styles} accepted={clubTermsAccepted} onAccept={acceptRules} />}
+                  {authSession && blockedClubList.length > 0 && <div>
+                    <p style={styles.hint}>Заблокированные клубы на этом устройстве:</p>
+                    {blockedClubList.map(item => <p key={item.id} style={styles.hint}>{item.name} <button style={styles.ghostBtn} onClick={() => {
+                      try { setClubBlocked(clubSafetyStorage, authSession.user.id, item, false); if (clubBlockRef.current === item.id) clubBlockRef.current = null; setSafetyTick(t => t + 1); setClubError(""); }
+                      catch { setClubError("Не удалось снять блокировку"); }
+                    }}>Снять блокировку</button></p>)}
+                  </div>}
                   {authSession && !club && (
                     <>
                       <p style={styles.hint}>Вы вошли как {authSession.user.email}.</p>
@@ -3144,7 +3206,7 @@ export default function BilliardsTracker() {
                             value={clubNameInput}
                             onChange={(e) => setClubNameInput(e.target.value)}
                           />
-                          <button style={styles.brassBtn} onClick={handleCreateClub} disabled={clubBusy}>
+                          <button style={styles.brassBtn} onClick={handleCreateClub} disabled={clubBusy || !clubTermsAccepted}>
                             Создать
                           </button>
                         </div>
@@ -3158,7 +3220,7 @@ export default function BilliardsTracker() {
                             value={clubCodeInput}
                             onChange={(e) => setClubCodeInput(e.target.value.toUpperCase())}
                           />
-                          <button style={styles.diceBtn} onClick={handleJoinClub} disabled={clubBusy}>
+                          <button style={styles.diceBtn} onClick={handleJoinClub} disabled={clubBusy || !clubTermsAccepted}>
                             Войти
                           </button>
                         </div>
@@ -3189,7 +3251,7 @@ export default function BilliardsTracker() {
                           <button
                             style={styles.diceBtn}
                             onClick={saveMyClubName}
-                            disabled={!myName.trim() || myName.trim() === (clubNameSaved || "")}
+                            disabled={!clubTermsAccepted || !myName.trim() || myName.trim() === (clubNameSaved || "")}
                           >
                             Сохранить
                           </button>
@@ -3203,8 +3265,9 @@ export default function BilliardsTracker() {
                         </p>
                       </div>
                       {clubError && <p style={{ ...styles.hint, color: COLORS.danger }}>{clubError}</p>}
+                      <ClubSafetyCard club={club} styles={styles} onBlock={handleBlockClub} />
                       <div style={styles.settingBtnRow}>
-                        <button style={styles.brassBtn} onClick={openClubHistory}>
+                        <button style={styles.brassBtn} onClick={openClubHistory} disabled={!clubTermsAccepted}>
                           История изменений
                         </button>
                         <button style={styles.diceBtn} onClick={handleLeaveClub} disabled={clubBusy}>
@@ -3221,6 +3284,7 @@ export default function BilliardsTracker() {
 
               <div style={styles.card}>
                 <h2 style={styles.h2}>О приложении</h2>
+                <p><a href="club-rules.html" target="_blank" rel="noopener noreferrer" style={{ color: COLORS.brass }}>Правила клубов</a></p>
                 <p style={styles.hint}>Твой бильярд · {__APP_VERSION__}</p>
                 <p><a href="privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: COLORS.brass }}>Политика конфиденциальности</a></p>
                 <p><a href="https://antonkuznetsov1911.github.io/Billiard-Score/delete-account.html" target="_blank" rel="noopener noreferrer" style={{ color: COLORS.brass }}>Удаление аккаунта</a></p>
