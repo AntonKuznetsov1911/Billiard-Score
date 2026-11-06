@@ -28,6 +28,11 @@ export async function sendMagicLink(email) {
   if (error) throw error;
 }
 
+export async function signInWithPassword(email, password) {
+  const { error } = await requireClient().auth.signInWithPassword({ email, password });
+  if (error) throw new Error("Не удалось войти. Проверьте email и пароль.");
+}
+
 export async function verifyEmailOtp(email, token) {
   const client = requireClient();
   const { error } = await client.auth.verifyOtp({ email, token: token.trim(), type: "email" });

@@ -4,6 +4,7 @@ import { saveToCloud, loadFromCloud, clearCloud } from "./cloudSync.js";
 import { isCloudConfigured } from "./supabaseClient.js";
 import {
   sendMagicLink,
+  signInWithPassword,
   verifyEmailOtp,
   signInWithGoogle,
   onAuthChange,
@@ -195,6 +196,7 @@ export default function BilliardsTracker() {
   const [editDraft, setEditDraft] = useState(null);
   const [authSession, setAuthSession] = useState(null);
   const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
   const [authStatus, setAuthStatus] = useState("idle"); // idle | sending | sent | verifying | error
   const [authError, setAuthError] = useState("");
   const [authCode, setAuthCode] = useState("");
@@ -1276,6 +1278,22 @@ export default function BilliardsTracker() {
     } catch (e) {
       setAuthStatus("error");
       setAuthError(e.message || "Не удалось отправить код");
+    }
+  };
+
+  const handlePasswordSignIn = async (event) => {
+    event.preventDefault();
+    if (!authEmail.trim() || !authPassword) return;
+    setAuthStatus("sending");
+    setAuthError("");
+    try {
+      await signInWithPassword(authEmail.trim(), authPassword);
+      setAuthPassword("");
+      setAuthStatus("idle");
+    } catch (error) {
+      setAuthPassword("");
+      setAuthStatus("error");
+      setAuthError(error.message);
     }
   };
 
@@ -3081,6 +3099,18 @@ export default function BilliardsTracker() {
                       <button style={{ ...styles.diceBtn, width: "100%" }} onClick={handleGoogleSignIn} disabled={authStatus === "sending"}>
                         Войти через Google
                       </button>
+                      <details style={{ marginTop: "16px" }}>
+                        <summary>Вход по паролю</summary>
+                        <p style={styles.hint}>Для аккаунтов, у которых уже установлен пароль. Укажите email выше.</p>
+                        <form onSubmit={handlePasswordSignIn} style={styles.addRow}>
+                          <input style={styles.input} type="password" autoComplete="current-password"
+                            aria-label="Пароль аккаунта" placeholder="Пароль аккаунта"
+                            value={authPassword} onChange={(event) => setAuthPassword(event.target.value)}
+                            required disabled={authStatus === "sending"} />
+                          <button style={styles.brassBtn} type="submit"
+                            disabled={authStatus === "sending" || !authEmail.trim()}>Войти по паролю</button>
+                        </form>
+                      </details>
                     </>
                   )}
                   {authSession && !club && (
@@ -3181,6 +3211,13 @@ export default function BilliardsTracker() {
                 </div>
               )}
 
+              <div style={styles.card}>
+                <h2 style={styles.h2}>О приложении</h2>
+                <p style={styles.hint}>Твой бильярд · {__APP_VERSION__}</p>
+                <p><a href="privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: COLORS.brass }}>Политика конфиденциальности</a></p>
+                <p><a href="https://antonkuznetsov1911.github.io/Billiard-Score/delete-account.html" target="_blank" rel="noopener noreferrer" style={{ color: COLORS.brass }}>Удаление аккаунта</a></p>
+                <p><a href="mailto:x9054074040@gmail.com" style={{ color: COLORS.brass }}>x9054074040@gmail.com</a></p>
+              </div>
               <FeedbackCard styles={styles} />
 
               <div style={styles.card}>

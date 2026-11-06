@@ -254,3 +254,47 @@ test("editing a kolhoz round updates the winner and pair totals together", async
   expect(m.kolhozNet).toEqual({ p1: 9, p2: 1, p3: -10 });
   expect(m.scores).toEqual({ p1: 10, p2: 1, p3: 0 });
 });
+
+test("password sign-in reports failure and clears the password; privacy remains accessible", async ({ page }) => {
+  await seed(page, base());
+  let submitted;
+  await page.route("https://*.supabase.co/auth/v1/token?grant_type=password", async (route) => {
+    submitted = route.request().postDataJSON();
+    await route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "invalid_grant", error_description: "Invalid login credentials" }) });
+  });
+  await openGame(page);
+  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await page.getByText("Вход по паролю", { exact: true }).click();
+  await page.getByPlaceholder("Ваш email").fill("review-test@example.com");
+  await page.getByLabel("Пароль аккаунта").fill("test-password-only");
+  await page.getByRole("button", { name: "Войти по паролю", exact: true }).click();
+  await expect(page.getByText("Не удалось войти. Проверьте email и пароль.")).toBeVisible();
+  expect(submitted.email).toBe("review-test@example.com");
+  expect(submitted.password).toBe("test-password-only");
+  await expect(page.getByLabel("Пароль аккаунта")).toHaveValue("");
+  await expect(page.getByRole("link", { name: "Политика конфиденциальности" })).toHaveAttribute("href", "privacy.html");
+});
+
+test("password sign-in opens the authenticated club controls without an email code", async ({ page }) => {
+  await seed(page, base());
+  const user = { id: "00000000-0000-4000-8000-000000000001", aud: "authenticated", role: "authenticated", email: "review-test@example.com", app_metadata: { provider: "email" }, user_metadata: {}, created_at: new Date().toISOString() };
+  const claims = Buffer.from(JSON.stringify({ sub: user.id, aud: "authenticated", role: "authenticated", exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url");
+  await page.route("https://*.supabase.co/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/auth/v1/token") {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ access_token: "eyJhbGciOiJIUzI1NiJ9." + claims + ".test", token_type: "bearer", expires_in: 3600, refresh_token: "test-refresh-only", user }) });
+    } else if (url.pathname === "/auth/v1/user") {
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify(user) });
+    } else {
+      await route.fulfill({ contentType: "application/json", body: "[]" });
+    }
+  });
+  await openGame(page);
+  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await page.getByText("Вход по паролю", { exact: true }).click();
+  await page.getByPlaceholder("Ваш email").fill(user.email);
+  await page.getByLabel("Пароль аккаунта").fill("test-password-only");
+  await page.getByRole("button", { name: "Войти по паролю", exact: true }).click();
+  await expect(page.getByText("Вы вошли как review-test@example.com.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Удалить аккаунт", exact: true })).toBeVisible();
+});
