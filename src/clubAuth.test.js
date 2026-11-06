@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   getUser: vi.fn(async () => ({ data: { user: { id: "test-user" } }, error: null })),
 }));
 vi.mock("./supabaseClient.js", () => ({ supabase: { rpc: mocks.rpc, from: mocks.from, auth: { getUser: mocks.getUser } } }));
-import { joinClub } from "./clubSync.js";
+import { joinClub, leaveClub } from "./clubSync.js";
 describe("club join authorization boundary", () => {
   beforeEach(() => {
     mocks.rpc.mockReset();
@@ -31,5 +31,12 @@ describe("club join authorization boundary", () => {
     mocks.rpc.mockResolvedValue({ data: null, error: null });
     await expect(joinClub("ABCD2345", "Антон")).rejects.toThrow("не найден");
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
+  });
+  it("does not claim the club was left when the server rejects removal", async () => {
+    const builder = { delete: vi.fn(), eq: vi.fn() };
+    builder.delete.mockReturnValue(builder);
+    builder.eq.mockReturnValueOnce(builder).mockResolvedValueOnce({ error: new Error("Network error") });
+    mocks.from.mockReturnValue(builder);
+    await expect(leaveClub("club1")).rejects.toThrow("Network error");
   });
 });

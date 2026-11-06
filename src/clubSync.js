@@ -146,7 +146,8 @@ export async function joinClub(code, displayName) {
 export async function leaveClub(clubId) {
   const client = requireClient();
   const user = await currentUser();
-  await client.from("club_members").delete().eq("club_id", clubId).eq("user_id", user.id);
+  const { error } = await client.from("club_members").delete().eq("club_id", clubId).eq("user_id", user.id);
+  if (error) throw error;
 }
 
 export async function getMyClub() {

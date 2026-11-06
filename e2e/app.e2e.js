@@ -340,3 +340,63 @@ test("production CSP blocks inline script execution", async ({ page }) => {
   });
   expect(await page.evaluate(() => window.__inlineSecurityProbe)).toBeUndefined();
 });
+
+
+test("club rules gate sync, private reports work, and blocking hides club content across reload", async ({ page }) => {
+  await seed(page, base());
+  const user = { id: "00000000-0000-4000-8000-000000000001", aud: "authenticated", role: "authenticated", email: "review-test@example.com", app_metadata: { provider: "email" }, user_metadata: {}, created_at: new Date().toISOString() };
+  const club = { id: "10000000-0000-4000-8000-000000000001", code: "TESTCODE", name: "Тестовый клуб", created_by: user.id };
+  const claims = Buffer.from(JSON.stringify({ sub: user.id, aud: "authenticated", role: "authenticated", exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url");
+  let reads = 0; let report = null; let removed = false;
+  await page.route("https://*.supabase.co/**", async route => {
+    const url = new URL(route.request().url());
+    let response = [];
+    if (url.pathname === "/auth/v1/token") response = { access_token: "eyJhbGciOiJIUzI1NiJ9." + claims + ".test", token_type: "bearer", expires_in: 3600, refresh_token: "test-refresh-only", user };
+    else if (url.pathname === "/auth/v1/user") response = user;
+    else if (url.pathname === "/rest/v1/club_members") {
+      if (route.request().method() === "DELETE") { removed = true; response = null; }
+      else if (url.searchParams.get("select").startsWith("club_id")) response = { club_id: club.id, clubs: club };
+      else response = [{ user_id: user.id, display_name: "Участник теста" }];
+    } else if (url.pathname === "/rest/v1/club_state") {
+      reads++;
+      response = { data: base({ players: [{ id: "remote", name: "Клубный игрок" }] }), updated_at: new Date().toISOString() };
+    } else if (url.pathname === "/rest/v1/feedback") { report = route.request().postDataJSON(); response = null; }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(response) });
+  });
+  await openGame(page);
+  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await page.getByText("Вход по паролю", { exact: true }).click();
+  await page.getByPlaceholder("Ваш email").fill(user.email);
+  await page.getByLabel("Пароль аккаунта").fill("test-password-only");
+  await page.getByRole("button", { name: "Войти по паролю", exact: true }).click();
+  await expect(page.getByText("Тестовый клуб", { exact: true })).toBeVisible();
+  await expect(page.getByText("До принятия правил", { exact: false })).toBeVisible();
+  expect(reads).toBe(0);
+  await expect(page.getByRole("button", { name: "Принять правила клубов" })).toBeDisabled();
+  await page.getByRole("checkbox", { name: "Я прочитал и принимаю правила клубов" }).check();
+  await page.getByRole("button", { name: "Принять правила клубов" }).click();
+  await expect.poll(() => reads).toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Пожаловаться на содержимое или участника" }).click();
+  await page.getByLabel("На кого жалоба").selectOption(user.id);
+  await page.getByLabel("Причина жалобы").fill("Тестовое нарушение, без реальных данных");
+  await page.getByRole("button", { name: "Отправить жалобу", exact: true }).click();
+  await expect(page.getByText("Жалоба отправлена разработчику.", { exact: false })).toBeVisible();
+  expect(report.message).toContain(club.id);
+  expect(report.message).toContain(user.id);
+  expect(report.message).toContain("Тестовое нарушение");
+  if (process.env.CLUB_SAFETY_SCREENSHOT) await page.screenshot({ path: process.env.CLUB_SAFETY_SCREENSHOT });
+  page.once("dialog", dialog => dialog.accept());
+  await page.getByRole("button", { name: "Заблокировать клуб и скрыть его данные" }).click();
+  await expect.poll(() => removed).toBe(true);
+  await expect.poll(async () => (await stored(page)).players).toEqual([]);
+  await page.getByRole("button", { name: "Русский бильярд" }).click();
+  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await expect(page.getByText("Заблокированные клубы на этом устройстве:")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Снять блокировку" })).toBeVisible();
+  const afterBlock = reads;
+  await page.reload();
+  await page.getByRole("button", { name: "Русский бильярд" }).click();
+  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await expect(page.getByRole("button", { name: "Снять блокировку" })).toBeVisible();
+  expect(reads).toBe(afterBlock);
+});
