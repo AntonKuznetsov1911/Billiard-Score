@@ -19,7 +19,11 @@ jobs:
       - run: npm ci
       - run: npm audit --audit-level=moderate
       - run: npm test
+      # Auth E2E intercept requests; use dummy public configuration, never live credentials.
       - run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://billiard-e2e.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_e2e_placeholder_only
       # UI tests: the real app in Chromium (start a game, taps, undo,
       # finish, trash, theme, CSV export, device wipe).
       - run: npx playwright install --with-deps chromium
