@@ -11,28 +11,15 @@
   --velvet: #0a2a3a;
   --velvet-dark: #06141d;
 }
-.premium-title {
-  color: #f1d395;
+.premium-setup {
+  padding-top: calc(14px + env(safe-area-inset-top)) !important;
+}
+
+.premium-game-types {
   text-align: center;
-  margin: 0 auto 10px;
+  margin: -8px 0 14px;
 }
-.premium-title > span {
-  font-family: Georgia, serif;
-  font-weight: 700;
-  letter-spacing: .28em;
-  font-size: clamp(14px, 4vw, 21px);
-}
-.premium-title .player-portrait {
-  display: block;
-  width: 51px;
-  margin: 6px auto 0;
-}
-.premium-title h1 {
-  color: #f8ebce;
-  font: 700 clamp(28px, 8vw, 43px)/1.08 Georgia, serif;
-  margin: 0;
-  text-shadow: 0 2px 18px #000;
-}
+
 .premium-panel {
   background: linear-gradient(145deg, color-mix(in srgb, var(--velvet, #06271d) 89%, transparent), color-mix(in srgb, var(--velvet-dark, #05140e) 96%, transparent));
   color: var(--cream, #f5ead2);
@@ -53,12 +40,23 @@
   gap: 8px;
   margin-bottom: 10px;
 }
-.premium-panel .premium-format-title {
+.premium-breaker,
+.premium-format {
   border-top: 1px solid var(--gold-line);
-  padding-top: 14px;
-  margin-top: 14px;
-  color: var(--gold);
+  padding-top: 12px;
+  margin-top: 12px;
 }
+
+.premium-breaker h2 { margin-bottom: 10px; }
+
+.premium-format summary {
+  min-height: 44px;
+  padding: 10px 0;
+  color: var(--gold);
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .portrait-grid, .discipline-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

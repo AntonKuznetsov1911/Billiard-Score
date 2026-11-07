@@ -50,20 +50,6 @@ test("modern pair: quick setup, big score, undo, finish and an actual PNG result
   expect(bytes.length).toBeGreaterThan(1000);
 });
 
-test("a saved setup survives reload and restores the discipline, players and match options", async ({page}) => {
-  await seed(page); await open(page); await setupPair(page);
-  await page.getByRole("button",{name:"Сохранить настройки партии"}).click();
-  await page.getByLabel("Название шаблона").fill("Вечерняя американка");
-  await page.getByRole("button",{name:"Сохранить шаблон",exact:true}).click();
-  await page.reload();
-  await pickRussian(page);
-  await page.getByText("Недавний состав и шаблоны",{exact:true}).click();
-  await page.getByRole("button",{name:/^Вечерняя американка/}).click();
-  await expect(page.getByRole("button",{name:"Антон",exact:true})).toHaveAttribute("aria-pressed","true");
-  await expect(page.getByRole("button",{name:"Игорь",exact:true})).toHaveAttribute("aria-pressed","true");
-  await expect(page.getByRole("button",{name:"Начать партию",exact:true})).toBeEnabled();
-});
-
 test("modern history is grouped and destructive actions stay in a menu with a trash recovery", async ({page}) => {
   const match={id:"m1",date:new Date().toISOString(),participants:["p1","p2"],scores:{p1:8,p2:3},winnerId:"p1",gameType:"russian",breakerId:"p1",breakerPotted:true};
   await seed(page,base({matches:[match]})); await open(page);
@@ -135,7 +121,7 @@ test("first launch waits for table lighting, then resumes a saved game after sel
   await expect(page.locator("nav")).toHaveCount(0);
   await pickRussian(page);
   await expect(page.locator("nav")).toHaveCount(0);
-  await expect(page.getByRole("heading",{name:"Новая партия"})).toBeVisible();
+  await expect(page.getByRole("heading",{name:/^Игроки/})).toBeVisible();
   for(const name of ["Антон","Игорь"]) {
     await page.getByPlaceholder("Имя игрока").fill(name);
     await page.getByPlaceholder("Имя игрока").press("Enter");
@@ -202,6 +188,10 @@ test("player portrait, match goal and manual breaker work through the premium se
   await expect(page.getByRole("dialog").getByRole("button",{name:"Космонавт"})).toHaveAttribute("aria-pressed","true");
   await page.getByRole("dialog").getByRole("button",{name:"Закрыть"}).click();
   await setupPair(page);
+  const format = page.getByText("Формат игры", {exact:true});
+  await expect(page.getByRole("button", {name:"9", exact:true})).toBeHidden();
+  await expect(page.getByRole("heading", {name:"Кто разбивает первым?"})).toBeVisible();
+  await format.click();
   await page.getByRole("button", {name:"9", exact:true}).click();
   await page.getByRole("group", {name:"Выбрать разбивающего"}).getByRole("button", {name:"Первым разбивает: Антон", exact:true}).click();
   await page.getByRole("button", {name:"Начать партию", exact:true}).click();
