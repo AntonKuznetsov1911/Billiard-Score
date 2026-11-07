@@ -32,10 +32,15 @@ public class NativeUXPlugin extends Plugin {
             return;
         }
 
-        long duration = "test".equals(call.getString("type")) ? 90L : 32L;
+        boolean test = "test".equals(call.getString("type"));
+        long duration = test ? 90L : 18L;
+        int amplitude = VibrationEffect.DEFAULT_AMPLITUDE;
+        if (!test && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vibrator.hasAmplitudeControl()) {
+            amplitude = 100;
+        }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                VibrationEffect effect = VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE);
+                VibrationEffect effect = VibrationEffect.createOneShot(duration, amplitude);
                 vibrator.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_TOUCH));
             } else {
                 AudioAttributes touch = new AudioAttributes.Builder()
@@ -43,7 +48,7 @@ public class NativeUXPlugin extends Plugin {
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build();
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE), touch);
+                    vibrator.vibrate(VibrationEffect.createOneShot(duration, amplitude), touch);
                 } else {
                     vibrator.vibrate(duration, touch);
                 }
