@@ -71,13 +71,13 @@ export function Confetti({ active }) {
 export function DisciplineGate({ onPick }) {
   return (
     <div style={gateStyles.wrap} className="no-print discipline-gate">
-      <p style={gateStyles.prompt}>Во что будете играть?</p>
+      <p>Во что будете играть?</p>
       <div style={gateStyles.options}>
-        <button style={gateStyles.option} onClick={() => onPick("russian")}>
+        <button onClick={() => onPick("russian")}>
           <img src={gatePyramid} className="gate-icon gate-icon-pyramid" alt="" width="44" height="44" />
           <span>Русский бильярд</span>
         </button>
-        <button style={gateStyles.option} onClick={() => onPick("pool")}>
+        <button onClick={() => onPick("pool")}>
           <span>Pool</span>
           <img src={poolPyramid} className="gate-icon gate-icon-pyramid" alt="" width="44" height="44" />
         </button>
@@ -97,30 +97,7 @@ const gateStyles = {
     padding: "calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom))",
     textAlign: "center",
   },
-  prompt: {
-    fontFamily: "'Fraunces', serif",
-    fontStyle: "italic",
-    fontSize: "22px",
-    fontWeight: 600,
-    color: "#F8F1DE",
-    margin: 0,
-    textShadow: "0 2px 10px rgba(0,0,0,0.55)",
-  },
   options: { display: "flex", flexDirection: "column", gap: "14px", width: "100%", maxWidth: "300px" },
-  option: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "10px",
-    padding: "16px 20px",
-    borderRadius: "14px",
-    border: "1.5px solid rgba(241,233,210,0.55)",
-    background: "rgba(20,22,18,0)",
-    color: "#F1E9D2",
-    fontWeight: 700,
-    fontSize: "15px",
-    cursor: "pointer",
-  },
 };
 
 // Dark theme: the room is gone — only what the lamp lights stays visible

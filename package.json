@@ -1,7 +1,7 @@
 {
   "name": "tvoy-billiard",
   "private": true,
-  "version": "1.2.13-preview",
+  "version": "1.2.14-preview",
   "description": "Твой бильярд — учёт партий, счёта и статистики русского бильярда и пула.",
   "type": "module",
   "scripts": {
@@ -21,6 +21,7 @@
     "@capacitor/filesystem": "^8.1.5",
     "@capacitor/ios": "^8.6.0",
     "@capacitor/share": "^8.0.3",
+    "@fontsource/cormorant-garamond": "5.3.0",
     "@fontsource/fraunces": "^5.3.0",
     "@fontsource/inter": "^5.3.0",
     "@fontsource/space-mono": "^5.3.0",

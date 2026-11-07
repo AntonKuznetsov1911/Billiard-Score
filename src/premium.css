@@ -216,6 +216,59 @@
   object-fit: cover;
 }
 
+.discipline-gate p,
+.discipline-gate button span {
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-weight: 700;
+}
+
+.discipline-gate p {
+  margin: 0;
+  color: #f8f1de;
+  font-size: 31px;
+  line-height: 1.12;
+  text-shadow: 0 2px 10px #0009;
+}
+
+.discipline-gate button {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  place-items: center;
+  gap: 3px;
+  padding: 16px 8px;
+  border: 1.5px solid #e4c689ab;
+  border-radius: 14px;
+  background: #05110cad;
+  color: #f8edcf;
+  font-size: 24px;
+  line-height: 1.16;
+  cursor: pointer;
+}
+
+.discipline-gate button span {
+  grid-area: 1 / 2;
+  white-space: nowrap;
+}
+
+.discipline-gate button img { grid-row: 1; }
+.discipline-gate button:first-child img { grid-column: 1; }
+.discipline-gate button:last-child img { grid-column: 3; }
+.discipline-gate button:first-child :is(span, img) { position: relative; left: 12px; }
+.discipline-gate button:last-child span { position: relative; left: -18px; }
+.discipline-gate button:last-child img { position: relative; left: -64px; }
+
+@media (max-width: 350px) {
+  .discipline-gate p { font-size: 29px; }
+  .discipline-gate button {
+    grid-template-columns: 30px minmax(0, 1fr) 30px;
+    font-size: 21px;
+  }
+  .discipline-gate button img { width: 30px; height: 30px; }
+  .discipline-gate button:first-child :is(span, img) { left: 8px; }
+  .discipline-gate button:last-child span { left: -12px; }
+  .discipline-gate button:last-child img { left: -48px; }
+}
+
 .gate-icon {
   flex: none;
   object-fit: contain;

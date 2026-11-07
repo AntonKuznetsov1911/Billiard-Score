@@ -13,3 +13,5 @@ import "@fontsource/fraunces/latin-600.css";
 import "@fontsource/fraunces/latin-700.css";
 import "@fontsource/space-mono/latin-400.css";
 import "@fontsource/space-mono/latin-700.css";
+import "@fontsource/cormorant-garamond/cyrillic-700.css";
+import "@fontsource/cormorant-garamond/latin-700.css";
