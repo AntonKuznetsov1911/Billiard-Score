@@ -1,3 +1,6 @@
+import { PLAYER_AVATARS } from "./constants.js";
+import { PlayerPortrait, DisciplineArt } from "./ui/PremiumGame.jsx";
+import "./premium.css";
 import { cacheAcceptedState as cacheLocalState } from "./localCache.js";
 import { validateBackupFile, parseBackup } from "./backupImport.js";
 import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from "react";
@@ -117,7 +120,6 @@ import {
 const RatingChartPanel = lazy(() => import("./RatingChart.jsx").then((m) => ({ default: m.RatingChartPanel })));
 
 const STORAGE_KEY = "billiards-club-data";
-const ONBOARDING_KEY = "billiards-onboarding-v1";
 // Id of the club this device's data was last synced with (see club load).
 const CLUB_SYNCED_KEY = "billiards-club-synced";
 // Which of the running games this device has open (each table/phone follows its own).
@@ -153,6 +155,11 @@ const cacheAcceptedState = (state) => {
 export default function BilliardsTracker() {
   const [data, setData] = useState(loadInitial());
   const [loaded, setLoaded] = useState(false);
+  const [avatarPlayerId, setAvatarPlayerId] = useState(null);
+  const [managePlayers, setManagePlayers] = useState(false);
+  const [goalOverride, setGoalOverride] = useState(null);
+  const [customGoal, setCustomGoal] = useState(false);
+  const [manualBreaker, setManualBreaker] = useState(null);
   const [nameInput, setNameInput] = useState("");
   const [selected, setSelected] = useState([]);
   const [tab, setTab] = useState("play");
@@ -207,6 +214,8 @@ export default function BilliardsTracker() {
   const [scorePulse, setScorePulse] = useState({ pid: null, ts: 0 });
   const [scoreWheelPid, setScoreWheelPid] = useState(null);
   const lastTapRef = useRef({ key: "", ts: 0 });
+  const [handicapOpen, setHandicapOpen] = useState(false);
+  const [startLarge, setStartLarge] = useState(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [gameMode, setGameMode] = useState(false);
   const [editMatchId, setEditMatchId] = useState(null);
@@ -335,36 +344,13 @@ export default function BilliardsTracker() {
     })();
   }, []);
 
-  useEffect(() => {
-    if (!loaded) return;
-    (async () => {
-      try {
-        const res = await window.storage.get(ONBOARDING_KEY, false);
-        if (res && res.value === "1") return; // already seen on this device
-      } catch (e) {
-        // no flag yet — first time here, fall through and show it
-      }
-      setShowOnboarding(true);
-    })();
-  }, [loaded]);
-
-  useEffect(() => {
-    if (loaded && (data.activeGames.length || data.players.length || readLocal("billiards-last-discipline"))) {
-      // Returning to a match already in progress — light and menu appear
-      // together, no delayed reveal (that's only for the first discipline
-      // pick on a fresh gate screen).
-      setTableLit(true);
-      setMenuVisible(true);
-      const resumed = data.activeGames.find(g => g.id === gameIdRef.current);
-      if (resumed && resumed.participants.length === 2 && !resumed.kolhoz) setGameMode(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded]);
+  const revealMenu = useCallback(() => setMenuVisible(true), []);
 
   const handleGatePick = (type) => {
+    const resumed = data.activeGames.find(g => g.id === gameIdRef.current && g.gameType === type);
+    if (!resumed) setCurrentGameId(null);
+    setGameMode(!!resumed && resumed.participants.length === 2 && !resumed.kolhoz);
     setGameType(type);
-    writeLocal("billiards-last-discipline", type);
-    setMenuVisible(true);
   };
 
   useEffect(() => {
@@ -380,7 +366,6 @@ export default function BilliardsTracker() {
 
   const dismissOnboarding = useCallback(() => {
     setShowOnboarding(false);
-    window.storage.set(ONBOARDING_KEY, "1", false).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -749,10 +734,12 @@ export default function BilliardsTracker() {
 
   const buildTargets = (mode, ids) => {
     const gm = mode ? RUSSIAN_MODES[mode] : null;
-    if (!gm) return null;
+    if (!gm?.target) return null;
+    const goal = gm.target === 8 ? goalOverride || gm.target : gm.target;
     const t = {};
     ids.forEach((id) => {
-      t[id] = handicaps[id] || gm.target;
+      const handicap = handicaps[id];
+      t[id] = handicapOpen && Number.isInteger(handicap) && handicap >= 1 ? Math.min(goal, handicap) : goal;
     });
     return t;
   };
@@ -836,13 +823,16 @@ export default function BilliardsTracker() {
       setSelected(available);
       if (available.length !== valid.length) setError("Некоторые игроки уже за столом. Выберите свободный состав.");
       updateData(prev => ({ ...prev, gameType: preset.gameType === "pool" ? "pool" : "russian", russianMode: RUSSIAN_MODES[preset.mode] ? preset.mode : "free" }));
+      setCustomGoal(false);
+      setGoalOverride(Number.isInteger(preset.goal) && preset.goal >= 1 && preset.goal <= 99 ? preset.goal : null);
+      setHandicapOpen(Object.values(preset.targets || {}).some(value => Number.isInteger(value) && value >= 1));
       setHandicaps(preset.targets || {}); setSeriesPick([1,2,3,4,5].includes(preset.seriesPick) ? preset.seriesPick : 1);
     }
     window.scrollTo({ top: 0, behavior: "instant" });
   };
   const rememberSetup = () => {
     if (!selected.length) return;
-    const preset = { id: uid(), name: presetLabel.trim() || selected.map(nameById).join(" · "), participants: [...selected], gameType: data.gameType || "russian", mode: data.russianMode || "free", targets: { ...handicaps }, seriesPick };
+    const preset = { id: uid(), name: presetLabel.trim() || selected.map(nameById).join(" · "), participants: [...selected], gameType: data.gameType || "russian", mode: data.russianMode || "free", targets: handicapOpen ? { ...handicaps } : {}, goal: goalOverride, seriesPick };
     try { setPresets(savePreset(window.localStorage, preset)); setPresetDraft(false); setPresetLabel(""); }
     catch { setError("Не удалось сохранить настройки на устройстве"); }
   };
@@ -871,9 +861,13 @@ export default function BilliardsTracker() {
     setError("");
     haptic("medium");
     setTableLit(true);
-    const breakerId = breakerInfo.breakerId || null;
+    const breakerId = selected.includes(manualBreaker) ? manualBreaker : breakerInfo.breakerId || null;
     const gameType = data.gameType || "russian";
     const mode = gameType === "russian" ? data.russianMode || "free" : null;
+    if (customGoal && mode && RUSSIAN_MODES[mode]?.target === 8 && !goalOverride) {
+      setError("Укажите цель от 1 до 99 шаров");
+      return;
+    }
     const game = newGame({ participants: selected, gameType, mode, targets: buildTargets(mode, selected), breakerId });
     updateData((prev) => {
       let activeSeries = prev.activeSeries;
@@ -889,8 +883,9 @@ export default function BilliardsTracker() {
       return { ...prev, activeSeries, activeGames: [...prev.activeGames, game] };
     });
     setCurrentGameId(game.id);
-    if (selected.length === 2 && mode !== "kolhoz") setGameMode(true);
+    setGameMode(startLarge ?? (selected.length === 2 && mode !== "kolhoz"));
     setSelected([]);
+    setManualBreaker(null);
     setDiceRolls(null);
     setHandicaps({});
   };
@@ -901,7 +896,9 @@ export default function BilliardsTracker() {
     const gameType = (from && from.gameType) || data.gameType || "russian";
     const mode = from ? from.mode || null : gameType === "russian" ? data.russianMode || "free" : null;
     const gm = mode ? RUSSIAN_MODES[mode] : null;
-    const targets = gm && gm.target ? Object.fromEntries(participants.map((id) => [id, gm.target])) : null;
+    const targets = gm?.target
+      ? Object.fromEntries(participants.map(id => [id, from?.targets?.[id] || gm.target]))
+      : null;
     const game = newGame({ participants, gameType, mode, targets });
     updateData((prev) => ({ ...prev, activeGames: [...prev.activeGames, game] }));
     setCurrentGameId(game.id);
@@ -1157,6 +1154,7 @@ export default function BilliardsTracker() {
       durationMs,
       solo,
       mode: g.mode || null,
+      targets: g.targets,
       gameType: g.gameType || "russian",
       series: seriesInfo,
       settlement,
@@ -1641,6 +1639,9 @@ export default function BilliardsTracker() {
 
   const setRussianMode = (mode) => {
     haptic("light");
+    setGoalOverride(null);
+    setCustomGoal(false);
+    setHandicaps({});
     updateData((prev) => ({ ...prev, russianMode: mode }));
   };
 
@@ -1802,6 +1803,7 @@ export default function BilliardsTracker() {
 
   const nativeBackRef = useRef(null);
   nativeBackRef.current = () => {
+    if (avatarPlayerId) return setAvatarPlayerId(null);
     if (resultCard) return closeResultCard();
     if (showOnboarding) return dismissOnboarding();
     if (tieCandidates) return setTieCandidates(null);
@@ -1860,17 +1862,12 @@ export default function BilliardsTracker() {
     );
   }
 
-  const home = tab === "play" && !activeGame;
+  const home = !menuVisible || (tab === "play" && !activeGame);
   const dark = !home;
   const styles = home ? makeHomeStyles(false) : makeStyles(true, data.gameType || "russian");
   const busyNow = busyPlayerIds(data.activeGames);
   const isKolhoz = (data.gameType || "russian") === "russian" && (data.russianMode || "free") === "kolhoz";
   const immersive = !!(activeGame && gameMode);
-
-  // Show the "what are we playing?" gate until a discipline is actively
-  // picked this session — skip it outright if a match is already underway
-  // (returning to an in-progress game shouldn't ask again).
-  const showDisciplineGate = !tableLit && !anyGameRunning;
 
   return (
     <div>
@@ -1971,17 +1968,17 @@ export default function BilliardsTracker() {
         }
       `}</style>
 
-      {home && <div style={styles.outerBg}>
-        <TableArt gameType={data.gameType} lit={tableLit} dark={false} />
+      {home && <div className="table-scene" style={styles.outerBg}>
+        <TableArt gameType={data.gameType} lit={tableLit} dark={false} onLightReady={menuVisible ? undefined : revealMenu} />
       </div>}
 
-      <div className={`modern-app${home ? " hybrid-home" : ""}`} data-theme={dark ? "dark" : "light"} data-game={data.gameType || "russian"} style={styles.page}>
+      <div className={`modern-app${home ? " hybrid-home premium-home" : ""}`} data-theme={dark ? "dark" : "light"} data-game={data.gameType || "russian"} style={styles.page}>
         {isOffline && (
           <div style={styles.offlineBanner} className="no-print">
             📡 Нет соединения — партии сохраняются на устройстве и синхронизируются, когда сеть вернётся
           </div>
         )}
-        {showDisciplineGate ? (
+        {!tableLit ? (
           <DisciplineGate onPick={handleGatePick} />
         ) : !menuVisible ? null : (
           <div className="menu-reveal">
@@ -1992,6 +1989,11 @@ export default function BilliardsTracker() {
                 <SyncBadge status={isOffline ? "offline" : clubSync} compact />
               </div>
             )}
+            {home && <div className="premium-title">
+              <span>ТВОЙ БИЛЬЯРД</span>
+              <PlayerPortrait avatar="cue" />
+              <h1>Новая партия</h1>
+            </div>}
             {!home && <div className="brand-row"><div><span className="brand-eyebrow">ТВОЙ БИЛЬЯРД</span><h1 className="page-heading">{tab === "play" ? "За столом" : tab === "history" ? "История" : tab === "rating" ? "Статистика" : ({club:"Клуб",appearance:"Вибрация",data:"Копии и экспорт",help:"Помощь",about:"О приложении"}[settingsPage] || "Ещё")}</h1></div></div>}
             {tab === "play" && !activeGame && <div style={styles.gameTypeSwitch} role="tablist" aria-label="Дисциплина">
               <button
@@ -2004,7 +2006,7 @@ export default function BilliardsTracker() {
                 }}
                 onClick={() => setGameType("russian")}
               >
-                <GameIcon type="russian" size={13} /> Русский
+                <GameIcon type="russian" size={18} /> Русский бильярд
               </button>
               <button
                 type="button"
@@ -2016,7 +2018,7 @@ export default function BilliardsTracker() {
                 }}
                 onClick={() => setGameType("pool")}
               >
-                <GameIcon type="pool" size={13} /> Pool
+                <GameIcon type="pool" size={18} /> Pool
               </button>
             </div>}
           </header>
@@ -2067,45 +2069,46 @@ export default function BilliardsTracker() {
               )}
 
               {!activeGame && (
-                <div style={styles.card}>
-                  <h2 style={styles.h2}>Игроки</h2>
-                  <div style={styles.addRow}>
-                    <input
-                      style={styles.input}
-                      placeholder="Имя игрока"
-                      value={nameInput}
-                      onChange={(e) => setNameInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && addPlayer()}
-                    />
-                    <button style={styles.brassBtn} onClick={addPlayer}>
-                      Добавить
-                    </button>
+                <div className="premium-panel">
+                  <div className="premium-panel-heading">
+                    <h2>Игроки ({data.players.length})</h2>
+                    {data.players.length > 0 && <button className="premium-link" aria-pressed={managePlayers} onClick={() => setManagePlayers(open => !open)}>
+                      {managePlayers ? "Готово" : "Управление"}
+                    </button>}
                   </div>
-                  {error && <div style={styles.errorText}>{error}</div>}
-                  {data.players.length === 0 ? (
-                    <p style={styles.emptyText}>Пока никого нет. Добавьте хотя бы двоих — игроков может быть сколько угодно.</p>
-                  ) : (
-                    <div style={styles.chipRow}>
-                      {data.players.map((p) => (
-                        <span key={p.id} style={styles.playerChip}>
-                          <PlayerBall color={playerColor(p.id)} size={12} /> {p.name}
-                          <button onClick={() => removePlayer(p.id)} style={styles.chipRemove} aria-label={`Удалить ${p.name}`}>
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <div className="portrait-grid">
+                    {data.players.map((p, index) => {
+                      const atTable = busyNow.has(p.id);
+                      return <div className="portrait-tile" key={p.id}>
+                        <button className="portrait-select" aria-pressed={selected.includes(p.id)}
+                          disabled={atTable && !selected.includes(p.id)} onClick={() => toggleSelect(p.id)}>
+                          <PlayerPortrait avatar={p.avatar || PLAYER_AVATARS[1 + index % (PLAYER_AVATARS.length - 1)][0]} />
+                          <span><PlayerBall color={playerColor(p.id)} size={11} /> {p.name}{atTable && " · за столом"}</span>
+                        </button>
+                        {managePlayers && <div className="portrait-tools">
+                          <button className="premium-link" aria-label={`Иконка игрока ${p.name}`} onClick={() => setAvatarPlayerId(p.id)}>Иконка</button>
+                          <button className="premium-link" aria-label={`Удалить ${p.name}`} onClick={() => removePlayer(p.id)}>×</button>
+                        </div>}
+                      </div>;
+                    })}
+                  </div>
+                  <div className="premium-add">
+                    <input className="premium-input" maxLength={40} aria-label="Имя игрока" placeholder="Имя игрока"
+                      value={nameInput} onChange={e => setNameInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") addPlayer(); }} />
+                    <button className="premium-link" onClick={addPlayer}>＋ Добавить игрока</button>
+                  </div>
+                  {error && <div role="alert" style={styles.errorText}>{error}</div>}
+                  {data.players.length >= 2 && <button className="premium-link" onClick={selectAllPlayers}>Выбрать всех</button>}
                 </div>
               )}
 
               {!activeGame && !data.activeBracket && (
-                <div style={styles.card}>
-                  <h2 style={styles.h2}>Начать партию</h2>
+                <div className="premium-panel">
                   {(data.gameType || "russian") === "russian" && (
                     <div style={{ marginBottom: "12px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
-                        <p style={styles.hint}>Дисциплина</p>
+                        <h2>Дисциплина</h2>
                         <button
                           style={styles.ghostBtn}
                           onClick={() => {
@@ -2116,17 +2119,11 @@ export default function BilliardsTracker() {
                           📖 Правила
                         </button>
                       </div>
-                      <div style={styles.chipRow}>
-                        {Object.entries(RUSSIAN_MODES).map(([key, m]) => (
-                          <button
-                            key={key}
-                            onClick={() => setRussianMode(key)}
-                            style={{
-                              ...styles.selectChip,
-                              ...((data.russianMode || "free") === key ? styles.selectChipActive : {}),
-                            }}
-                          >
-                            {m.alias}
+                      <div className="discipline-grid">
+                        {Object.entries(RUSSIAN_MODES).map(([key, mode]) => (
+                          <button key={key} onClick={() => setRussianMode(key)} aria-pressed={(data.russianMode || "free") === key}>
+                            <DisciplineArt mode={key} />
+                            {mode.alias}
                           </button>
                         ))}
                       </div>
@@ -2142,35 +2139,30 @@ export default function BilliardsTracker() {
                       )}
                     </div>
                   )}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px" }}>
-                    <p style={styles.pickLabel}>Отметьте, кто играет</p>
-                    {data.players.length >= 2 && (
-                      <button style={styles.diceBtn} onClick={selectAllPlayers}>
-                        Выбрать всех
-                      </button>
-                    )}
-                  </div>
-                  <div style={styles.chipRow}>
-                    {data.players.map((p) => {
-                      const atTable = busyNow.has(p.id);
-                      return (
-                        <button
-                          key={p.id}
-                          onClick={() => toggleSelect(p.id)}
-                          aria-pressed={selected.includes(p.id)}
-                          disabled={atTable && !selected.includes(p.id)}
-                          title={atTable ? "Сейчас играет за другим столом" : undefined}
-                          style={{
-                            ...styles.selectChip,
-                            ...(selected.includes(p.id) ? styles.selectChipActive : {}),
-                          }}
-                        >
-                          <PlayerBall color={playerColor(p.id)} size={12} /> {p.name}
-                          {atTable ? <span style={{ fontSize: "10px", opacity: 0.8 }}> · за столом</span> : null}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <h2 className="premium-format-title">Формат игры</h2>
+                  {data.gameType === "russian" && RUSSIAN_MODES[data.russianMode || "free"].target === 8 && (
+                    <div style={styles.diceSection}>
+                      <p style={styles.pickLabel}>До скольки</p>
+                      <div className="premium-options">
+                        {[8, 9, 10].map(goal => <button key={goal} aria-pressed={!customGoal && (goalOverride || 8) === goal}
+                          onClick={() => { setCustomGoal(false); setGoalOverride(goal); setHandicaps({}); }}>{goal}</button>)}
+                        <button aria-pressed={customGoal} onClick={() => { setCustomGoal(true); setGoalOverride(null); setHandicaps({}); }}>Свой</button>
+                      </div>
+                      {customGoal && <input style={{ ...styles.input, marginTop: 8, width: "100%" }} aria-label="Цель в шарах"
+                        type="number" min="1" max="99" value={goalOverride ?? ""}
+                        onChange={e => {
+                          const value = e.target.valueAsNumber;
+                          setGoalOverride(Number.isInteger(value) && value >= 1 && value <= 99 ? value : null);
+                          setHandicaps({});
+                        }} />}
+                    </div>
+                  )}
+                  {!isKolhoz && data.gameType === "russian" && selected.length >= 2 && (
+                    <button type="button" className="premium-switch" role="switch" aria-checked={handicapOpen}
+                      onClick={() => setHandicapOpen(open => !open)}>
+                      Фора (гандикап)<span aria-hidden="true" />
+                    </button>
+                  )}
                   {isKolhoz && selected.length >= 2 && (
                     <div style={{ ...styles.breakerBanner, textAlign: "left" }}>
                       <div style={{ fontWeight: 700, marginBottom: "4px" }}>Кто кому забивает (по порядку выбора):</div>
@@ -2187,10 +2179,14 @@ export default function BilliardsTracker() {
                   {selected.length >= 2 && (
                     <div style={styles.diceSection}>
                       <p style={styles.pickLabel}>Кто разбивает первым?</p>
-                      <button style={styles.diceBtn} onClick={() => rollDiceFor(selected)} disabled={diceRolling}>
-                        <IconDice color="currentColor" /> Кинуть кубики
+                      <button style={styles.diceBtn} onClick={() => { setManualBreaker(null); rollDiceFor(selected); }} disabled={diceRolling}>
+                        <IconDice color="currentColor" /> Случайно
                       </button>
 
+                      <div className="premium-options" role="group" aria-label="Выбрать разбивающего">
+                        {selected.map(id => <button key={id} aria-label={`Первым разбивает: ${nameById(id)}`} aria-pressed={manualBreaker === id} disabled={diceRolling}
+                          onClick={() => { setDiceRolls(null); setManualBreaker(id); }}>{nameById(id)}</button>)}
+                      </div>
                       {diceRolls && (
                         <div style={styles.diceRow}>
                           {selected.map((id) => (
@@ -2252,16 +2248,16 @@ export default function BilliardsTracker() {
 
                   {!isKolhoz && selected.length >= 2 && (
                     <button
-                      style={{ ...styles.ghostBtn, marginTop: "10px" }}
+                      className="premium-link" aria-expanded={advancedOpen}
                       onClick={() => setAdvancedOpen((o) => !o)}
                     >
-                      {advancedOpen ? "▲ Скрыть доп. настройки" : "▾ Формат и фора"}
+                      {advancedOpen ? "▴ Дополнительно" : "▾ Дополнительно"}
                     </button>
                   )}
 
                   {!isKolhoz && advancedOpen && !data.activeSeries && selected.length >= 2 && (
                     <div style={styles.diceSection}>
-                      <p style={styles.hint}>Формат</p>
+                      <p style={styles.hint}>Серия партий</p>
                       <div style={styles.chipRow}>
                         {[
                           [1, "Одна партия"],
@@ -2288,16 +2284,17 @@ export default function BilliardsTracker() {
                   )}
 
                   {!isKolhoz &&
-                    advancedOpen &&
+                    handicapOpen &&
                     (data.gameType || "russian") === "russian" &&
                     selected.length >= 2 &&
                     RUSSIAN_MODES[data.russianMode || "free"] && (
                       <div style={styles.diceSection}>
                         <p style={styles.hint}>
-                          Фора: личная цель каждого (по умолчанию {RUSSIAN_MODES[data.russianMode || "free"].target})
+                          Фора: личная цель каждого игрока
                         </p>
                         {selected.map((pid) => {
-                          const base = RUSSIAN_MODES[data.russianMode || "free"].target;
+                          const defaultGoal = RUSSIAN_MODES[data.russianMode || "free"].target;
+                          const base = defaultGoal === 8 ? goalOverride || defaultGoal : defaultGoal;
                           const cur = handicaps[pid] || base;
                           return (
                             <div key={pid} style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "8px" }}>
@@ -2325,9 +2322,16 @@ export default function BilliardsTracker() {
                       </div>
                     )}
 
+                  {selected.length > 0 && advancedOpen && (
+                    <button type="button" className="premium-switch" role="switch"
+                      aria-checked={startLarge ?? (selected.length === 2 && !isKolhoz)}
+                      onClick={() => setStartLarge(!(startLarge ?? (selected.length === 2 && !isKolhoz)))}>
+                      Показать счёт на весь экран<span aria-hidden="true" />
+                    </button>
+                  )}
                   <button
-                    style={{ ...styles.brassBtn, marginTop: "16px", width: "100%" }}
-                    disabled={selected.length < 1 || (isKolhoz && selected.length < 2)}
+                    className="premium-start"
+                    disabled={selected.length < 1 || (isKolhoz && selected.length < 2) || diceRolling || (data.gameType === "russian" && RUSSIAN_MODES[data.russianMode || "free"].target === 8 && customGoal && !goalOverride)}
                     onClick={startGame}
                   >
                     {selected.length === 1 ? "Начать тренировку (соло)" : "Начать партию"}
@@ -2588,7 +2592,7 @@ export default function BilliardsTracker() {
                   {gm && (
                     <p style={styles.hint}>
                       {gm.name === gm.alias ? gm.name : `${gm.name} (${gm.alias})`}
-                      {gm.target ? ` · до ${gm.target} ${gm.unit}` : " · завершите вручную, когда закончите"}
+                      {gm.target ? "" : " · завершите вручную, когда закончите"}
                     </p>
                   )}
                   {kolhoz && (
@@ -3835,6 +3839,26 @@ export default function BilliardsTracker() {
         />
       )}
 
+      {avatarPlayerId && data.players.some(p => p.id === avatarPlayerId) && (
+        <div style={styles.modalOverlay} onClick={() => setAvatarPlayerId(null)}>
+          <section className="premium-panel avatar-picker" role="dialog" aria-modal="true" aria-label="Иконка игрока" onClick={event => event.stopPropagation()}>
+            <h2>Иконка игрока</h2>
+            <div className="portrait-grid">
+              {PLAYER_AVATARS.map(([id, label]) => (
+                <button key={id} className="portrait-select" aria-pressed={data.players.find(p => p.id === avatarPlayerId)?.avatar === id}
+                  onClick={() => {
+                    updateData(prev => ({ ...prev, players: prev.players.map(p => p.id === avatarPlayerId ? { ...p, avatar: id } : p) }));
+                    setAvatarPlayerId(null);
+                  }}>
+                  <PlayerPortrait avatar={id} />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+            <button className="premium-link" onClick={() => setAvatarPlayerId(null)}>Закрыть</button>
+          </section>
+        </div>
+      )}
       {showOnboarding && <Onboarding onFinish={dismissOnboarding} />}
     </div>
   );

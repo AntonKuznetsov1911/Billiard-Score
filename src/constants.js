@@ -151,3 +151,8 @@ export const RUSSIAN_MODES = {
 };
 
 export const AVATAR_COLORS = ["#E4032E", "#0057B8", "#F0B429", "#5B2C82", "#0B7A3E", "#FF7F11", "#3D6E8F", "#7A1F2B", "#20B2AA", "#C08A3E"];
+
+export const PLAYER_AVATARS = [
+  ["cue", "Кий"], ["lion", "Лев"], ["wolf", "Волк"],
+  ["panther", "Пантера"], ["helmet", "Шлем"], ["eight", "Восьмёрка"],
+];

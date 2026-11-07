@@ -1,4 +1,4 @@
-import { AVATAR_COLORS, RUSSIAN_MODES } from "./constants.js";
+import { AVATAR_COLORS, PLAYER_AVATARS, RUSSIAN_MODES } from "./constants.js";
 
 export function uid() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -99,6 +99,7 @@ export function sanitizePlayers(list) {
       ...p,
       id: p.id.slice(0, 64),
       name: p.name.slice(0, 40),
+      avatar: PLAYER_AVATARS.some(([key]) => key === p.avatar) ? p.avatar : undefined,
       color: typeof p.color === "string" && COLOR_RE.test(p.color) ? p.color : AVATAR_COLORS[i % AVATAR_COLORS.length],
     }));
 }

@@ -13,7 +13,14 @@ async function seed(page, data=base()) {
   },data);
 }
 const stored = page => page.evaluate(()=>JSON.parse(localStorage.getItem("billiards-club-data")));
-async function open(page) { await page.goto("/"); await expect(page.getByPlaceholder("Имя игрока")).toBeVisible(); }
+async function pickRussian(page) {
+  await page.getByRole("button", {name:"Русский бильярд", exact:true}).click();
+}
+async function open(page) {
+  await page.goto("/");
+  await pickRussian(page);
+  await expect(page.getByPlaceholder("Имя игрока")).toBeVisible();
+}
 async function setupPair(page) {
   await page.getByRole("button",{name:"Антон",exact:true}).click();
   await page.getByRole("button",{name:"Игорь",exact:true}).click();
@@ -49,6 +56,7 @@ test("a saved setup survives reload and restores the discipline, players and mat
   await page.getByLabel("Название шаблона").fill("Вечерняя американка");
   await page.getByRole("button",{name:"Сохранить шаблон",exact:true}).click();
   await page.reload();
+  await pickRussian(page);
   await page.getByText("Недавний состав и шаблоны",{exact:true}).click();
   await page.getByRole("button",{name:/^Вечерняя американка/}).click();
   await expect(page.getByRole("button",{name:"Антон",exact:true})).toHaveAttribute("aria-pressed","true");
@@ -121,10 +129,13 @@ test("club login and policy controls are still reachable from the club page", as
   await expect(page.getByText("Не удалось войти. Проверьте email и пароль.")).toBeVisible();
 });
 
-test("modern first launch leads to player setup and remembers the chosen discipline", async ({page}) => {
+test("first launch waits for table lighting, then resumes a saved game after selection", async ({page}) => {
   await page.goto("/");
-  await page.getByRole("button",{name:"Пропустить",exact:true}).click();
-  await page.getByRole("button",{name:"Русский бильярд",exact:true}).click();
+  await expect(page.getByText("Во что будете играть?")).toBeVisible();
+  await expect(page.locator("nav")).toHaveCount(0);
+  await pickRussian(page);
+  await expect(page.locator("nav")).toHaveCount(0);
+  await expect(page.getByRole("heading",{name:"Новая партия"})).toBeVisible();
   for(const name of ["Антон","Игорь"]) {
     await page.getByPlaceholder("Имя игрока").fill(name);
     await page.getByPlaceholder("Имя игрока").press("Enter");
@@ -134,6 +145,7 @@ test("modern first launch leads to player setup and remembers the chosen discipl
   await expect(page.locator(".fs-overlay")).toBeVisible();
   await expect.poll(async()=>(await stored(page))?.activeGames?.length).toBe(1);
   await page.reload();
+  await pickRussian(page);
   await expect(page.locator(".fs-overlay")).toBeVisible();
 });
 
@@ -147,8 +159,10 @@ test("mobile layouts: both disciplines, fixed palettes and focused pages fit the
   };
   await expect(page.locator(".modern-app")).toHaveAttribute("data-theme","light"); await shot("01-home-russian");
   await page.getByRole("tab",{name:/Pool/}).click(); await shot("02-home-pool");
-  await page.getByRole("tab",{name:"Русский",exact:true}).click();
+  await page.getByRole("tab",{name:"Русский бильярд",exact:true}).click();
   await setupPair(page); await shot("03-setup");
+  await page.getByRole("button",{name:"Начать партию",exact:true}).scrollIntoViewIfNeeded();
+  if(process.env.DESIGN_SCREENSHOT_DIR) await page.screenshot({path:`${process.env.DESIGN_SCREENSHOT_DIR}/03-format.png`, animations:"disabled"});
   await page.getByRole("button",{name:"Начать партию",exact:true}).click(); await shot("04-score");
   await expect(page.locator(".fs-zones")).toHaveCSS("flex-direction","column");
   await page.setViewportSize({width:850,height:393});
@@ -164,4 +178,24 @@ test("mobile layouts: both disciplines, fixed palettes and focused pages fit the
   await expect(page.locator(".modern-app")).toHaveAttribute("data-theme","dark"); await shot("06-haptics-dark");
   await page.locator("nav").getByRole("button",{name:"Ещё",exact:true}).click(); await shot("07-settings-dark");
   await page.locator("nav").getByRole("button",{name:"Статистика",exact:true}).click(); await shot("08-statistics-dark");
+});
+
+test("player portrait, match goal and manual breaker work through the premium setup", async ({page}) => {
+  await seed(page); await open(page);
+  await page.getByRole("button", {name:"Управление"}).click();
+  await page.getByRole("button", {name:"Иконка игрока Антон"}).click();
+  await page.getByRole("dialog", {name:"Иконка игрока"}).getByRole("button", {name:"Лев"}).click();
+  await expect.poll(async () => (await stored(page)).players[0].avatar).toBe("lion");
+  await page.reload();
+  await pickRussian(page);
+  await page.getByRole("button", {name:"Управление"}).click();
+  await page.getByRole("button", {name:"Иконка игрока Антон"}).click();
+  await expect(page.getByRole("dialog").getByRole("button",{name:"Лев"})).toHaveAttribute("aria-pressed","true");
+  await page.getByRole("dialog").getByRole("button",{name:"Закрыть"}).click();
+  await setupPair(page);
+  await page.getByRole("button", {name:"9", exact:true}).click();
+  await page.getByRole("group", {name:"Выбрать разбивающего"}).getByRole("button", {name:"Первым разбивает: Антон", exact:true}).click();
+  await page.getByRole("button", {name:"Начать партию", exact:true}).click();
+  await expect.poll(async () => (await stored(page)).activeGames?.[0]?.targets).toEqual({p1:9,p2:9});
+  expect((await stored(page)).activeGames[0].breakerId).toBe("p1");
 });

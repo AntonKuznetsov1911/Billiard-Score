@@ -130,9 +130,16 @@ const DARK_SPOT_MASK = [
   "radial-gradient(ellipse 20% 12% at 50% 40%, rgba(0,0,0,0.22) 30%, transparent 100%)",
 ].join(", ");
 
-export function TableArt({ gameType, lit, dark }) {
+export function TableArt({ gameType, lit, dark, onLightReady }) {
   const isPool = gameType === "pool";
   const ready = usePhotosReady();
+  const litPhotoReady = ready[isPool ? tablePoolPhoto : tableRussianPhoto];
+  useEffect(() => {
+    if (!lit || !litPhotoReady || !onLightReady) return;
+    const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 650;
+    const timeout = setTimeout(onLightReady, duration);
+    return () => clearTimeout(timeout);
+  }, [lit, litPhotoReady, onLightReady]);
   // Light theme: the photo a touch brighter and livelier; dark theme: only
   // the lamp-lit spot shows. Transitions so switching themes is smooth.
   const photoFilter = dark ? "brightness(0.95) saturate(0.95)" : "brightness(1.12) saturate(1.12)";

@@ -40,9 +40,8 @@ async function more(page, section) {
 
 const ordinary = page => page.getByRole("button", { name: "▣ Обычный", exact: true }).click();
 
-test("first run: onboarding, add players, play, undo, finish, persists", async ({ page }) => {
+test("first run: choose a table, add players, play, undo, finish, persists", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Пропустить" }).click();
   await page.getByRole("button", { name: "Русский бильярд" }).click();
   for (const n of ["Антон", "Игорь"]) {
     await page.getByPlaceholder("Имя игрока").fill(n);
@@ -66,6 +65,7 @@ test("first run: onboarding, add players, play, undo, finish, persists", async (
   expect(Object.values(game.scores).sort()).toEqual([0, 2]);
 
   await page.reload();
+  await openGateIfShown(page);
   await ordinary(page);
   await expect(page.getByText("Партия идёт")).toBeVisible();
 
@@ -97,7 +97,7 @@ test("a game saved by an older version still opens with its score", async ({ pag
       activeGame: { id: "g1", participants: ["p1", "p2"], scores: { p1: 5, p2: 3 }, actionLog: [], gameType: "russian", mode: "free", startedAt: new Date().toISOString() },
     })
   );
-  await page.goto("/");
+  await openGame(page);
   await ordinary(page);
   await expect(page.getByText("Партия идёт")).toBeVisible();
   await expect(page.getByRole("button", { name: "Добавить: Антон" })).toBeVisible();
