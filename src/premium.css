@@ -99,7 +99,7 @@
   color: #c9ab74;
   filter: drop-shadow(0 3px 6px #000a);
 }
-.discipline-art { width: 66px; max-width: 100%; }
+.discipline-art { width: 66px; max-width: 100%; height: auto; }
 .portrait-tools, .premium-add, .premium-options {
   display: flex;
   flex-wrap: wrap;

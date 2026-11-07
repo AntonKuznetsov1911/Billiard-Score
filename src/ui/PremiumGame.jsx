@@ -1,6 +1,20 @@
 import React from "react";
 import { PLAYER_AVATARS } from "../constants.js";
 
+import amerikanka from "../assets/disciplines/01-amerikanka.webp";
+import moskovskaya from "../assets/disciplines/02-moskovskaya.webp";
+import nevskaya from "../assets/disciplines/03-nevskaya.webp";
+import kolhoz from "../assets/disciplines/04-kolhoz.webp";
+import classic from "../assets/disciplines/05-71-ochko.webp";
+
+const disciplineIcons = {
+  free: amerikanka,
+  combined: moskovskaya,
+  dynamic: nevskaya,
+  kolhoz,
+  classic,
+};
+
 const images = import.meta.glob("../assets/avatars/*.webp", {
   eager: true,
   query: "?url",
@@ -23,19 +37,5 @@ export function PlayerPortrait({ avatar }) {
 }
 
 export function DisciplineArt({ mode }) {
-  const balls = mode === "kolhoz"
-    ? [[32,13,"#d34149","#8e1826"], [23,28,"#f0bc42","#a76c18"], [41,28,"#4b93de","#24538c"]]
-    : mode === "classic" ? [[32,23]] : mode === "dynamic"
-      ? [[25,22],[41,27]] : [[32,11],[25,21],[39,21],[18,31],[32,31],[46,31]];
-  return (
-    <svg viewBox="0 0 64 45" className="discipline-art" aria-hidden="true">
-      {balls.map(([x, y, face = "#eee0bd", edge = "#c6aa77"]) => <g key={x + ":" + y}>
-        <circle cx={x} cy={y + 2} r="8.3" fill="#03130c" opacity=".6" />
-        <circle cx={x} cy={y} r={balls.length === 1 ? 14 : 8} fill={edge} />
-        <circle cx={x-1} cy={y-1} r={balls.length === 1 ? 12 : 7} fill={face} />
-        <circle cx={x-3} cy={y-3} r="2" fill="#fffae6" />
-      </g>)}
-      {balls.length === 1 && <text x="32" y="27" fill="#322819" fontSize="13" fontWeight="700" textAnchor="middle">71</text>}
-    </svg>
-  );
+  return <img src={disciplineIcons[mode]} className="discipline-art" alt="" width="256" height="180" />;
 }
