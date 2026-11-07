@@ -179,6 +179,16 @@ export function IconTrophy({ size = 14, color = COLORS.brass }) {
   );
 }
 
+export function BreakMark({ potted }) {
+  const result = potted === true ? "yes" : potted === false ? "no" : "unknown";
+  const label = { yes: "Забил с разбоя", no: "Не забил с разбоя", unknown: "Разбой не отмечен" }[result];
+  return (
+    <span className="break-mark" data-break={result} role="img" aria-label={label}>
+      <IconTarget size={12} color="currentColor" />
+    </span>
+  );
+}
+
 export function IconTarget({ size = 14, color = COLORS.brass }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: "inline-block", verticalAlign: "-2px" }} aria-hidden="true">

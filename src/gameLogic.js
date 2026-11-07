@@ -937,37 +937,6 @@ export function filterMatches(matches, { period = "all", gameType = "all", mode 
   });
 }
 
-// Elo over head-to-head matches in chronological order. In games with more
-// than two players the winner is rated against each loser, K split evenly.
-export function computeElo(players, matches, { k = 32, start = 1000 } = {}) {
-  const rating = {};
-  const games = {};
-  players.forEach((p) => {
-    rating[p.id] = start;
-    games[p.id] = 0;
-  });
-  matches
-    .filter((m) => !m.solo && m.winnerId && rating[m.winnerId] !== undefined)
-    .slice()
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .forEach((m) => {
-      const losers = m.participants.filter((pid) => pid !== m.winnerId && rating[pid] !== undefined);
-      if (!losers.length) return;
-      const before = { ...rating };
-      const kk = k / losers.length;
-      losers.forEach((lid) => {
-        const expectedWin = 1 / (1 + Math.pow(10, (before[lid] - before[m.winnerId]) / 400));
-        rating[m.winnerId] += kk * (1 - expectedWin);
-        rating[lid] -= kk * (1 - expectedWin);
-      });
-      games[m.winnerId] += 1;
-      losers.forEach((lid) => (games[lid] += 1));
-    });
-  const out = {};
-  Object.keys(rating).forEach((id) => (out[id] = { rating: Math.round(rating[id]), games: games[id] }));
-  return out;
-}
-
 // wins/losses of every player against every other one (pairwise; in a
 // multi-player game the winner beats each loser, losers don't count vs each other).
 export function computeHeadToHeadMatrix(players, matches) {

@@ -86,6 +86,7 @@ test("statistical summaries and detailed views remain available without a long d
   await expect(page.getByRole("button",{name:"Игроки",exact:true})).toHaveAttribute("aria-pressed","true");
   await page.getByRole("button",{name:"Игроки",exact:true}).click();
   await expect(page.getByRole("heading",{name:"Рейтинг игроков",exact:true})).toBeVisible();
+  await expect(page.getByText(/Эло/i)).toHaveCount(0);
   await page.getByRole("button",{name:"Графики",exact:true}).click();
   await expect(page.getByRole("button",{name:"Рейтинг",exact:true})).toHaveAttribute("aria-pressed","true");
   await page.getByRole("button",{name:"Динамика",exact:true}).click();
@@ -159,9 +160,9 @@ test("mobile layouts: both disciplines, fixed palettes and focused pages fit the
   await shot("04-score-landscape");
   await page.setViewportSize({width:393,height:851});
   await page.getByRole("button",{name:"▣ Обычный",exact:true}).click();
-  await page.locator("nav").getByRole("button",{name:"История",exact:true}).click(); await expect(page.locator(".break-mark[data-break=yes]")).toHaveText(/Забил с разбоя/);
-  await expect(page.locator(".break-mark[data-break=no]")).toHaveText(/Не забил с разбоя/);
-  await expect(page.locator(".break-mark[data-break=unknown]")).toHaveText(/Разбой не отмечен/);
+  await page.locator("nav").getByRole("button",{name:"История",exact:true}).click(); await expect(page.locator(".break-mark[data-break=yes]")).toHaveCSS("color","rgb(164, 230, 172)");
+  await expect(page.locator(".break-mark[data-break=no]")).toHaveCSS("color","rgb(242, 146, 145)");
+  await expect(page.locator(".break-mark[data-break=unknown]")).toHaveText("");
   await shot("05-history");
   await more(page,"Вибрация");
   await expect(page.locator(".modern-app")).toHaveAttribute("data-theme","dark"); await shot("06-haptics-dark");
@@ -172,7 +173,7 @@ test("mobile layouts: both disciplines, fixed palettes and focused pages fit the
 test("player portrait, match goal and manual breaker work through the premium setup", async ({page}) => {
   await seed(page); await open(page);
   await page.getByRole("button", {name:"Управление"}).click();
-  await page.getByRole("button", {name:"Иконка игрока Антон"}).click();
+  await page.getByRole("button", {name:"Изменить иконку игрока Антон"}).click();
   const picker = page.getByRole("dialog", {name:"Иконка игрока"});
   await expect(picker.locator("img")).toHaveCount(16);
   await expect.poll(() => picker.locator("img").evaluateAll(images => images.every(img => img.complete && img.naturalWidth > 0))).toBe(true);
@@ -184,7 +185,7 @@ test("player portrait, match goal and manual breaker work through the premium se
   await page.reload();
   await pickRussian(page);
   await page.getByRole("button", {name:"Управление"}).click();
-  await page.getByRole("button", {name:"Иконка игрока Антон"}).click();
+  await page.getByRole("button", {name:"Изменить иконку игрока Антон"}).click();
   await expect(page.getByRole("dialog").getByRole("button",{name:"Космонавт"})).toHaveAttribute("aria-pressed","true");
   await page.getByRole("dialog").getByRole("button",{name:"Закрыть"}).click();
   await setupPair(page);

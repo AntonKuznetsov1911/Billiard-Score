@@ -86,7 +86,7 @@ function FormDots({ form }) {
   );
 }
 
-export function PlayerProfileModal({ profile, name, color, elo, nameById, onClose, styles }) {
+export function PlayerProfileModal({ profile, name, color, nameById, onClose, styles }) {
   const row = (label, value) => (
     <div style={styles.modalRow}>
       <span>{label}</span>
@@ -107,7 +107,6 @@ export function PlayerProfileModal({ profile, name, color, elo, nameById, onClos
           <FormDots form={profile.form} />
         </div>
         <div style={styles.modalScores}>
-          {row("Рейтинг Эло", elo ? elo.rating : "—")}
           {row("Партий / побед", `${profile.games} / ${profile.wins}`)}
           {row("Ср. счёт (свой : соперника)", `${profile.avgOwn.toFixed(1)} : ${profile.avgOpp.toFixed(1)}`)}
           {row("Любимая дисциплина", profile.favoriteGameType ? GAME_TYPES[profile.favoriteGameType].label : "—")}

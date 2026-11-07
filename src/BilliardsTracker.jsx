@@ -54,7 +54,6 @@ import {
   bracketRoundLabel,
   buildKolhozSettlement,
   filterMatches,
-  computeElo,
   computeHeadToHeadMatrix,
   computePlayerProfile,
   computeActivity,
@@ -99,6 +98,7 @@ import {
   PlayerBall,
   IconTrophy,
   IconTarget,
+  BreakMark,
   IconDice,
 } from "./ui/icons.jsx";
 import { ScoreWheel } from "./ui/ScoreWheel.jsx";
@@ -193,7 +193,6 @@ export default function BilliardsTracker() {
   const [handicaps, setHandicaps] = useState({});
   const [h2h, setH2h] = useState({ a: "", b: "" });
   const [statsFilter, setStatsFilter] = useState({ period: "all", gameType: "all", mode: "all" });
-  const [ratingSortElo, setRatingSortElo] = useState(false);
   const [profilePid, setProfilePid] = useState(null);
   const [safetyCopies, setSafetyCopies] = useState(() => {
     try {
@@ -1643,11 +1642,6 @@ export default function BilliardsTracker() {
   // Everything on the Рейтинг tab except achievements follows the filters.
   const fMatches = useMemo(() => filterMatches(data.matches, statsFilter), [data.matches, statsFilter]);
   const fStats = useMemo(() => computeStats(data.players, fMatches), [data.players, fMatches]);
-  const elo = useMemo(() => computeElo(data.players, fMatches), [data.players, fMatches]);
-  const ranked = useMemo(
-    () => (ratingSortElo ? [...fStats].sort((a, b) => elo[b.id].rating - elo[a.id].rating) : fStats),
-    [fStats, elo, ratingSortElo]
-  );
   const h2hMatrix = useMemo(() => computeHeadToHeadMatrix(data.players, fMatches), [data.players, fMatches]);
   const activity = useMemo(() => computeActivity(fMatches), [fMatches]);
   const tempoData = useMemo(() => buildMatchTempo(fMatches), [fMatches]);
@@ -2026,7 +2020,7 @@ export default function BilliardsTracker() {
                           <span><PlayerBall color={playerColor(p.id)} size={11} /> {p.name}{atTable && " · за столом"}</span>
                         </button>
                         {managePlayers && <div className="portrait-tools">
-                          <button className="premium-link" aria-label={`Иконка игрока ${p.name}`} onClick={() => { haptic("light"); setAvatarPlayerId(p.id); }}>Иконка</button>
+                          <button className="premium-link" aria-label={`Изменить иконку игрока ${p.name}`} onClick={() => { haptic("light"); setAvatarPlayerId(p.id); }}>Изменить иконку</button>
                           <button className="premium-link" aria-label={`Удалить ${p.name}`} onClick={() => removePlayer(p.id)}>×</button>
                         </div>}
                       </div>;
@@ -2752,20 +2746,8 @@ export default function BilliardsTracker() {
                   <EmptyState text="Пока нет данных — сыграйте первую партию" />
                 ) : (
                   <>
-                    <div style={{ display: "flex", gap: "6px", marginBottom: "8px" }}>
-                      {[[false, "По победам"], [true, "По Эло"]].map(([v, label]) => (
-                        <button
-                          key={label}
-                          type="button"
-                          onClick={() => setRatingSortElo(v)}
-                          style={{ ...styles.selectChip, padding: "5px 12px", fontSize: "12px", ...(ratingSortElo === v ? styles.selectChipActive : {}) }}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
                     <ol style={styles.rankList}>
-                      {ranked.map((s, i) => (
+                      {fStats.map((s, i) => (
                         <li
                           key={s.id}
                           style={{ ...styles.rankItem, cursor: "pointer" }}
@@ -2778,12 +2760,12 @@ export default function BilliardsTracker() {
                             <PlayerBall color={playerColor(s.id)} /> {s.name}
                           </span>
                           <span style={styles.rankScore}>
-                            {s.wins} поб. · {s.winPct}% · Эло {elo[s.id].rating}
+                            {s.wins} поб. · {s.winPct}%
                           </span>
                         </li>
                       ))}
                     </ol>
-                    <p style={styles.hint}>Нажмите на игрока — откроется его карточка. Эло: старт 1000, учитывает силу соперника.</p>
+                    <p style={styles.hint}>Нажмите на игрока — откроется его карточка.</p>
                   </>
                 )}
               </div>)}</>
@@ -3021,7 +3003,7 @@ export default function BilliardsTracker() {
                             <span key={pid}>
                               <span style={pid === m.winnerId ? styles.winnerName : undefined}>
                                 {nameById(pid)}
-                                {pid === m.breakerId && <span className="break-mark" data-break={m.breakerPotted === true ? "yes" : m.breakerPotted === false ? "no" : "unknown"} title={`${nameById(pid)} разбивал`}><IconTarget size={12} color="currentColor" /> {m.breakerPotted === true ? "Забил с разбоя" : m.breakerPotted === false ? "Не забил с разбоя" : "Разбой не отмечен"}</span>}
+                                {pid === m.breakerId && <BreakMark potted={m.breakerPotted} />}
                               </span>
                               {i < m.participants.length - 1 ? " · " : ""}
                             </span>
@@ -3422,7 +3404,7 @@ export default function BilliardsTracker() {
                     <div key={pid} style={styles.modalRow}>
                       <span>
                         {nameById(pid)}
-                        {pid === selectedMatch.breakerId ? <IconTarget size={12} /> : ""}
+                        {pid === selectedMatch.breakerId && <BreakMark potted={selectedMatch.breakerPotted} />}
                         {pid === selectedMatch.winnerId ? <IconTrophy size={12} /> : ""}
                       </span>
                       <span style={styles.mono}>{(selectedMatch.scores && selectedMatch.scores[pid]) || 0}</span>
@@ -3430,12 +3412,6 @@ export default function BilliardsTracker() {
                   ))}
                 </div>
                 <p style={styles.modalHint}>Начинал: {selectedMatch.breakerId ? nameById(selectedMatch.breakerId) : "не указано"}</p>
-                {selectedMatch.breakerId && (
-                  <p style={styles.modalHint}>
-                    Забил при разборе:{" "}
-                    {selectedMatch.breakerPotted === true ? "Да" : selectedMatch.breakerPotted === false ? "Нет" : "не указано"}
-                  </p>
-                )}
                 <p style={styles.modalHint}>
                   {selectedMatch.solo ? "Тип: тренировка (соло)" : `Победитель: ${nameById(selectedMatch.winnerId)}`}
                 </p>
@@ -3673,7 +3649,6 @@ export default function BilliardsTracker() {
           profile={profile}
           name={nameById(profilePid)}
           color={playerColor(profilePid)}
-          elo={elo[profilePid]}
           nameById={nameById}
           onClose={() => setProfilePid(null)}
           styles={styles}

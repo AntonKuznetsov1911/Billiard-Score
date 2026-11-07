@@ -16,7 +16,6 @@ import {
   computeRecords,
   computeAchievements,
   filterMatches,
-  computeElo,
   computeHeadToHeadMatrix,
   computePlayerProfile,
   computeActivity,
@@ -355,30 +354,6 @@ describe("filterMatches", () => {
     expect(filterMatches(matches, { gameType: "russian" }, now).map((m) => m.id)).toEqual(["old", "w", "legacy"]);
     expect(filterMatches(matches, { mode: "free" }, now).map((m) => m.id)).toEqual(["old", "legacy"]);
     expect(filterMatches(matches, { mode: "kolhoz" }, now).map((m) => m.id)).toEqual(["w"]);
-  });
-});
-
-describe("computeElo", () => {
-  const players = [{ id: "a" }, { id: "b" }, { id: "c" }];
-  it("starts everyone at 1000 and moves the winner up and loser down equally", () => {
-    const elo = computeElo(players, [{ participants: ["a", "b"], winnerId: "a", date: "2024-01-01" }]);
-    expect(elo.a.rating).toBe(1016);
-    expect(elo.b.rating).toBe(984);
-    expect(elo.c.rating).toBe(1000);
-    expect(elo.a.games).toBe(1);
-  });
-  it("rewards beating a stronger opponent more than a weaker one", () => {
-    const seed = [
-      { participants: ["a", "b"], winnerId: "a", date: "2024-01-01" },
-      { participants: ["a", "b"], winnerId: "a", date: "2024-01-02" },
-    ];
-    const upset = computeElo(players, [...seed, { participants: ["a", "b"], winnerId: "b", date: "2024-01-03" }]);
-    const base = computeElo(players, seed);
-    expect(upset.b.rating - base.b.rating).toBeGreaterThan(16);
-  });
-  it("ignores solo games and sorts chronologically", () => {
-    const solo = computeElo(players, [{ participants: ["a"], winnerId: "a", solo: true, date: "2024-01-01" }]);
-    expect(solo.a.rating).toBe(1000);
   });
 });
 
