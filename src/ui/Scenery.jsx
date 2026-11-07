@@ -1,7 +1,8 @@
 // Background scenery: the table photo, discipline gate and confetti.
 import React, { useEffect, useMemo, useState } from "react";
 import { COLORS } from "../constants.js";
-import { GameIcon } from "./icons.jsx";
+import gatePyramid from "../assets/gate-pyramid.webp";
+import gateEight from "../assets/gate-eight.webp";
 import tableRussianPhoto from "../assets/table-russian.webp";
 import tablePoolPhoto from "../assets/table-pool.webp";
 import tableOffPhoto from "../assets/table-off.webp";
@@ -73,11 +74,11 @@ export function DisciplineGate({ onPick }) {
       <p style={gateStyles.prompt}>Во что будете играть?</p>
       <div style={gateStyles.options}>
         <button style={gateStyles.option} onClick={() => onPick("russian")}>
-          <GameIcon type="russian" size={30} />
+          <img src={gatePyramid} className="gate-icon gate-icon-pyramid" alt="" width="44" height="44" />
           <span>Русский бильярд</span>
         </button>
         <button style={gateStyles.option} onClick={() => onPick("pool")}>
-          <GameIcon type="pool" size={30} />
+          <img src={gateEight} className="gate-icon gate-icon-eight" alt="" width="44" height="44" />
           <span>Pool</span>
         </button>
       </div>
