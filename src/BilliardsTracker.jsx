@@ -77,7 +77,7 @@ import { ClubTerms, ClubSafetyCard } from "./ClubSafetyCard.jsx";
 import { acceptedClubTerms, acceptClubTerms, blockedClubs, setClubBlocked, clubSafetyStorage } from "./clubSafety.js";
 import { FeedbackCard } from "./FeedbackCard.jsx";
 import { InstallCard } from "./InstallCard.jsx";
-import { isNativeApp, exportTextFile, shareText, listenToNativeApp, minimizeNativeApp, printReport, shareImageBlob } from "./native.js";
+import { isNativeApp, exportTextFile, shareText, listenToNativeApp, minimizeNativeApp, printReport, shareImageBlob, nativeHaptic } from "./native.js";
 import { buildCsv } from "./csv.js";
 import { getTG, haptic } from "./telegram.js";
 import { makeStyles } from "./styles.js";
@@ -166,6 +166,7 @@ export default function BilliardsTracker() {
   const [settingsPage, setSettingsPage] = useState(null);
   const [statsView, setStatsView] = useState("players");
   const [matchMenu, setMatchMenu] = useState(null);
+  const [hapticsTestStatus, setHapticsTestStatus] = useState("");
   const [hapticsEnabled, setHapticsEnabled] = useState(() => readLocal("billiards-haptics") !== "off");
   const [resultCard, setResultCard] = useState(null);
   const [cardBusy, setCardBusy] = useState(false);
@@ -3049,7 +3050,26 @@ export default function BilliardsTracker() {
 
 
               <>{settingsPage === "appearance" && (<div style={styles.card}>
-                <div className="native-haptics-row"><span>Вибрация при выборе и счёте</span><button className="toggle-pill" aria-pressed={hapticsEnabled} onClick={() => { const next = !hapticsEnabled; setHapticsEnabled(next); writeLocal("billiards-haptics", next ? "on" : "off"); }}>{hapticsEnabled ? "Включена" : "Выключена"}</button></div>
+                <div className="native-haptics-row">
+                  <span>Вибрация при выборе и счёте</span>
+                  <button className="toggle-pill" aria-pressed={hapticsEnabled} onClick={() => {
+                    const next = !hapticsEnabled;
+                    setHapticsEnabled(next);
+                    writeLocal("billiards-haptics", next ? "on" : "off");
+                    setHapticsTestStatus("");
+                  }}>
+                    {hapticsEnabled ? "Включена" : "Выключена"}
+                  </button>
+                </div>
+                <button style={styles.ghostBtn} disabled={!hapticsEnabled} onClick={async () => {
+                  const requested = await nativeHaptic("test");
+                  setHapticsTestStatus(requested
+                    ? "Тестовый сигнал отправлен. Если отклика нет, проверьте системную настройку вибрации при касании."
+                    : "На этом устройстве или в этом браузере вибрация недоступна.");
+                }}>
+                  Проверить вибрацию
+                </button>
+                {hapticsTestStatus && <p style={styles.hint} role="status">{hapticsTestStatus}</p>}
 
               </div>)}</>
 

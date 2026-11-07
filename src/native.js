@@ -6,9 +6,20 @@ import { Share } from "@capacitor/share";
 const NativePrint = registerPlugin("BilliardPrint");
 const NativeUX = registerPlugin("BilliardUX");
 
-export function nativeHaptic(type = "light") {
-  try { if (window.localStorage.getItem("billiards-haptics") === "off") return; } catch { /* Optional preference. */ }
-  if (isNativeApp()) NativeUX.tap({ type }).catch(() => {});
+export async function nativeHaptic(type = "light") {
+  if (typeof window === "undefined") return false;
+  try {
+    if (window.localStorage.getItem("billiards-haptics") === "off") return false;
+  } catch { /* Optional preference. */ }
+
+  try {
+    if (isNativeApp() && window.Capacitor.getPlatform() === "android") {
+      return (await NativeUX.tap({ type })).requested === true;
+    }
+    return window.navigator?.vibrate?.(type === "test" ? 90 : 32) === true;
+  } catch {
+    return false;
+  }
 }
 
 export async function shareImageBlob(blob, filename) {

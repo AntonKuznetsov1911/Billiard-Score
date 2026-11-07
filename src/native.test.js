@@ -1,10 +1,10 @@
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ writeFile: vi.fn(), share: vi.fn(), addListener: vi.fn(), print: vi.fn() }));
+const mocks = vi.hoisted(() => ({ writeFile: vi.fn(), share: vi.fn(), addListener: vi.fn(), print: vi.fn(), tap: vi.fn() }));
 vi.mock("@capacitor/filesystem", () => ({ Filesystem: { writeFile: mocks.writeFile }, Directory: { Cache: "CACHE" }, Encoding: { UTF8: "utf8" } }));
 vi.mock("@capacitor/share", () => ({ Share: { share: mocks.share } }));
 vi.mock("@capacitor/app", () => ({ App: { addListener: mocks.addListener } }));
-vi.mock("@capacitor/core", () => ({ registerPlugin: () => ({ print: mocks.print }) }));
-import { exportTextFile, listenToNativeApp, printReport, shareText, shareImageBlob } from "./native.js";
+vi.mock("@capacitor/core", () => ({ registerPlugin: () => ({ print: mocks.print, tap: mocks.tap }) }));
+import { exportTextFile, listenToNativeApp, printReport, shareText, shareImageBlob, nativeHaptic } from "./native.js";
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("window", { Capacitor: { isNativePlatform: () => true, getPlatform: () => "android" } });
@@ -49,4 +49,21 @@ it("uses Android printing and text sharing without browser fallbacks", async () 
   await printReport(); expect(mocks.print).toHaveBeenCalledOnce();
   expect(await shareText({ text: "Победа" })).toBe(true);
   expect(mocks.share).toHaveBeenCalledWith({ text: "Победа" });
+});
+
+it("sends the Android test pulse and respects the app vibration switch", async () => {
+  mocks.tap.mockResolvedValue({ requested: true });
+  window.localStorage = { getItem: vi.fn().mockReturnValue("on") };
+  expect(await nativeHaptic("test")).toBe(true);
+  expect(mocks.tap).toHaveBeenCalledWith({ type: "test" });
+  window.localStorage.getItem.mockReturnValue("off");
+  expect(await nativeHaptic()).toBe(false);
+  expect(mocks.tap).toHaveBeenCalledTimes(1);
+});
+
+it("reports when a vibration request is rejected or unsupported", async () => {
+  mocks.tap.mockRejectedValue(new Error("Unavailable"));
+  expect(await nativeHaptic()).toBe(false);
+  window.Capacitor.isNativePlatform = () => false;
+  expect(await nativeHaptic("test")).toBe(false);
 });
