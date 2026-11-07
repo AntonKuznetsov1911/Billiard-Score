@@ -33,6 +33,9 @@ async function more(page, name) {
 test("modern pair: quick setup, big score, undo, finish and an actual PNG result", async ({page}) => {
   await seed(page); await open(page); await setupPair(page);
   await page.getByRole("button",{name:"Начать партию",exact:true}).click();
+  await expect(page.getByRole("heading",{name:"Партия идёт"})).toBeVisible();
+  await expect(page.locator(".fs-overlay")).toHaveCount(0);
+  await page.getByRole("button",{name:/Крупный режим/}).click();
   await expect(page.locator(".fs-overlay")).toBeVisible();
   await page.locator('[aria-label="Счёт: Антон"]').click();
   await page.locator('[aria-label="Счёт: Антон"]').click();
@@ -129,7 +132,7 @@ test("first launch waits for table lighting, then resumes a saved game after sel
   }
   await page.getByRole("button",{name:"Выбрать всех",exact:true}).click();
   await page.getByRole("button",{name:"Начать партию",exact:true}).click();
-  await expect(page.locator(".fs-overlay")).toBeVisible();
+  await expect(page.getByRole("heading",{name:"Партия идёт"})).toBeVisible();
   await expect.poll(async()=>(await stored(page))?.activeGames?.length).toBe(1);
   await page.reload();
   await pickRussian(page);
@@ -153,7 +156,9 @@ test("mobile layouts: both disciplines, fixed palettes and focused pages fit the
   await setupPair(page); await shot("03-setup");
   await page.getByRole("button",{name:"Начать партию",exact:true}).scrollIntoViewIfNeeded();
   if(process.env.DESIGN_SCREENSHOT_DIR) await page.screenshot({path:`${process.env.DESIGN_SCREENSHOT_DIR}/03-format.png`, animations:"disabled"});
-  await page.getByRole("button",{name:"Начать партию",exact:true}).click(); await shot("04-score");
+  await page.getByRole("button",{name:"Начать партию",exact:true}).click();
+  await shot("04-score-regular");
+  await page.getByRole("button",{name:/Крупный режим/}).click(); await shot("04-score");
   await expect(page.locator(".fs-zones")).toHaveCSS("flex-direction","column");
   await page.setViewportSize({width:850,height:393});
   await expect(page.locator(".fs-zones")).toHaveCSS("flex-direction","row");

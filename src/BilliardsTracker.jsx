@@ -212,7 +212,6 @@ export default function BilliardsTracker() {
   const [scoreWheelPid, setScoreWheelPid] = useState(null);
   const lastTapRef = useRef({ key: "", ts: 0 });
   const [handicapOpen, setHandicapOpen] = useState(false);
-  const [startLarge, setStartLarge] = useState(null);
   const [gameMode, setGameMode] = useState(false);
   const [editMatchId, setEditMatchId] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
@@ -854,7 +853,7 @@ export default function BilliardsTracker() {
       return { ...prev, activeSeries, activeGames: [...prev.activeGames, game] };
     });
     setCurrentGameId(game.id);
-    setGameMode(startLarge ?? (selected.length === 2 && mode !== "kolhoz"));
+    setGameMode(false);
     setSelected([]);
     setManualBreaker(null);
     setDiceRolls(null);
@@ -873,7 +872,7 @@ export default function BilliardsTracker() {
     const game = newGame({ participants, gameType, mode, targets });
     updateData((prev) => ({ ...prev, activeGames: [...prev.activeGames, game] }));
     setCurrentGameId(game.id);
-    setGameMode(participants.length === 2 && mode !== "kolhoz");
+    setGameMode(false);
     setVictory(null);
     setTab("play");
   };
@@ -1832,7 +1831,12 @@ export default function BilliardsTracker() {
   const dark = !home;
   const styles = home ? makeHomeStyles(false) : makeStyles(true, data.gameType || "russian");
   const busyNow = busyPlayerIds(data.activeGames);
-  const isKolhoz = (data.gameType || "russian") === "russian" && (data.russianMode || "free") === "kolhoz";
+  const isRussian = (data.gameType || "russian") === "russian";
+  const russianMode = RUSSIAN_MODES[data.russianMode || "free"];
+  const isKolhoz = isRussian && data.russianMode === "kolhoz";
+  const canSetGoal = isRussian && russianMode.target === 8;
+  const canSetHandicap = isRussian && !isKolhoz && selected.length >= 2;
+  const canSetSeries = !isKolhoz && !data.activeSeries && selected.length >= 2;
   const immersive = !!(activeGame && gameMode);
 
   return (
@@ -1962,6 +1966,36 @@ export default function BilliardsTracker() {
         <main style={styles.main} key={tab} className={home ? "tab-fade premium-setup" : "tab-fade"}>
           {tab === "play" && (
             <section>
+              {!activeGame && (
+                <div className="premium-game-types">
+                  <div style={styles.gameTypeSwitch} role="tablist" aria-label="Дисциплина">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={(data.gameType || "russian") !== "pool"}
+                      style={{
+                        ...styles.gameTypeSwitchBtn,
+                        ...((data.gameType || "russian") !== "pool" ? styles.gameTypeSwitchBtnActive : {}),
+                      }}
+                      onClick={() => setGameType("russian")}
+                    >
+                      <GameIcon type="russian" size={18} /> Русский бильярд
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={(data.gameType || "russian") === "pool"}
+                      style={{
+                        ...styles.gameTypeSwitchBtn,
+                        ...((data.gameType || "russian") === "pool" ? styles.gameTypeSwitchBtnActive : {}),
+                      }}
+                      onClick={() => setGameType("pool")}
+                    >
+                      <GameIcon type="pool" size={18} /> Pool
+                    </button>
+                  </div>
+                </div>
+              )}
               {!activeGame && anyGameRunning && (
                 <div style={styles.cardFrosted}>
                   <div style={styles.liveHeader}>
@@ -2038,36 +2072,6 @@ export default function BilliardsTracker() {
                 </div>
               )}
 
-              {!activeGame && (
-                <div className="premium-game-types">
-                  <div style={styles.gameTypeSwitch} role="tablist" aria-label="Дисциплина">
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={(data.gameType || "russian") !== "pool"}
-                      style={{
-                        ...styles.gameTypeSwitchBtn,
-                        ...((data.gameType || "russian") !== "pool" ? styles.gameTypeSwitchBtnActive : {}),
-                      }}
-                      onClick={() => setGameType("russian")}
-                    >
-                      <GameIcon type="russian" size={18} /> Русский бильярд
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={(data.gameType || "russian") === "pool"}
-                      style={{
-                        ...styles.gameTypeSwitchBtn,
-                        ...((data.gameType || "russian") === "pool" ? styles.gameTypeSwitchBtnActive : {}),
-                      }}
-                      onClick={() => setGameType("pool")}
-                    >
-                      <GameIcon type="pool" size={18} /> Pool
-                    </button>
-                  </div>
-                </div>
-              )}
               {!activeGame && !data.activeBracket && (
                 <div className="premium-panel">
                   {(data.gameType || "russian") === "russian" && (
@@ -2189,10 +2193,10 @@ export default function BilliardsTracker() {
                     </div>
                   )}
 
-                  {(selected.length > 0 || (data.gameType === "russian" && RUSSIAN_MODES[data.russianMode || "free"].target === 8)) && (
+                  {(canSetGoal || canSetHandicap || canSetSeries) && (
                     <details className="premium-format">
                       <summary onClick={() => haptic("light")}>Формат игры</summary>
-                      {data.gameType === "russian" && RUSSIAN_MODES[data.russianMode || "free"].target === 8 && (
+                      {canSetGoal && (
                         <div style={styles.diceSection}>
                           <p style={styles.pickLabel}>До скольки</p>
                           <div className="premium-options">
@@ -2209,13 +2213,13 @@ export default function BilliardsTracker() {
                             }} />}
                         </div>
                       )}
-                      {!isKolhoz && data.gameType === "russian" && selected.length >= 2 && (
+                      {canSetHandicap && (
                         <button type="button" className="premium-switch" role="switch" aria-checked={handicapOpen}
                           onClick={() => { haptic("light"); setHandicapOpen(open => !open); }}>
                           Фора (гандикап)<span aria-hidden="true" />
                         </button>
                       )}
-                      {!isKolhoz && !data.activeSeries && selected.length >= 2 && (
+                      {canSetSeries && (
                         <div style={styles.diceSection}>
                           <p style={styles.hint}>Серия партий</p>
                           <div style={styles.chipRow}>
@@ -2243,11 +2247,7 @@ export default function BilliardsTracker() {
                         </div>
                       )}
 
-                      {!isKolhoz &&
-                        handicapOpen &&
-                        (data.gameType || "russian") === "russian" &&
-                        selected.length >= 2 &&
-                        RUSSIAN_MODES[data.russianMode || "free"] && (
+                      {canSetHandicap && handicapOpen && (
                           <div style={styles.diceSection}>
                             <p style={styles.hint}>
                               Фора: личная цель каждого игрока
@@ -2282,18 +2282,11 @@ export default function BilliardsTracker() {
                           </div>
                         )}
 
-                      {selected.length > 0 && (
-                        <button type="button" className="premium-switch" role="switch"
-                          aria-checked={startLarge ?? (selected.length === 2 && !isKolhoz)}
-                          onClick={() => { haptic("light"); setStartLarge(!(startLarge ?? (selected.length === 2 && !isKolhoz))); }}>
-                          Показать счёт на весь экран<span aria-hidden="true" />
-                        </button>
-                      )}
                     </details>
                   )}
                   <button
                     className="premium-start"
-                    disabled={selected.length < 1 || (isKolhoz && selected.length < 2) || diceRolling || (data.gameType === "russian" && RUSSIAN_MODES[data.russianMode || "free"].target === 8 && customGoal && !goalOverride)}
+                    disabled={selected.length < 1 || (isKolhoz && selected.length < 2) || diceRolling || (canSetGoal && customGoal && !goalOverride)}
                     onClick={startGame}
                   >
                     {selected.length === 1 ? "Начать тренировку (соло)" : "Начать партию"}

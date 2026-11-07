@@ -49,7 +49,6 @@ test("first run: choose a table, add players, play, undo, finish, persists", asy
   }
   await page.getByRole("button", { name: "Выбрать всех" }).click();
   await page.getByRole("button", { name: "Начать партию" }).click();
-  await ordinary(page);
   await expect(page.getByText("Партия идёт")).toBeVisible();
 
   await page.getByRole("button", { name: "Добавить: Антон" }).click();
@@ -82,6 +81,7 @@ test("big mode: fast taps all count", async ({ page }) => {
   await openGame(page);
   await page.getByRole("button", { name: "Выбрать всех" }).click();
   await page.getByRole("button", { name: "Начать партию" }).click();
+  await page.getByRole("button", { name: /Крупный режим/ }).click();
   const score = page.locator('[aria-label^="Счёт:"]').first();
   const box = await score.boundingBox();
   for (let i = 0; i < 8; i++) await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2 + 60);
@@ -164,7 +164,6 @@ test("two games at once: each table keeps its own score", async ({ page }) => {
   await page.getByRole("button", { name: "Антон", exact: true }).click();
   await page.getByRole("button", { name: "Игорь", exact: true }).click();
   await page.getByRole("button", { name: "Начать партию" }).click();
-  await ordinary(page);
   await page.getByRole("button", { name: "Добавить: Антон" }).click();
 
   await page.getByRole("button", { name: /Новая партия за другим столом/ }).click();
@@ -173,7 +172,6 @@ test("two games at once: each table keeps its own score", async ({ page }) => {
   await page.getByRole("button", { name: "Сергей", exact: true }).click();
   await page.getByRole("button", { name: "Ваня", exact: true }).click();
   await page.getByRole("button", { name: "Начать партию" }).click();
-  await ordinary(page);
   await page.getByRole("button", { name: "Добавить: Ваня" }).click();
   await page.waitForTimeout(120);
   await page.getByRole("button", { name: "Добавить: Ваня" }).click();
