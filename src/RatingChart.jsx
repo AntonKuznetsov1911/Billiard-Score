@@ -210,8 +210,8 @@ export function MatchTempoChart({ tempoData, dark, hintColor }) {
 }
 
 const VIEWS = [
-  { key: "trend", label: "Динамика", hint: "Процент побед нарастающим итогом после каждой партии" },
   { key: "bar", label: "Рейтинг", hint: "Текущий % побед по каждому игроку" },
+  { key: "trend", label: "Динамика", hint: "Процент побед нарастающим итогом после каждой партии" },
   { key: "summary", label: "Матчи", hint: "Победы, поражения и % побед по партиям" },
   { key: "tempo", label: "Темп", hint: "Шары и минуты в последних партиях" },
 ];
@@ -248,7 +248,7 @@ function segmentStyles(dark) {
 // chart views to show, so the Рейтинг tab has one chart window instead of
 // three separate cards.
 export function RatingChartPanel({ trendData, chartData, tempoData = [], stats, players, dark, hintColor, playerColor }) {
-  const [view, setView] = useState("trend");
+  const [view, setView] = useState("bar");
   const st = segmentStyles(dark);
   const active = VIEWS.find((v) => v.key === view);
   const empty = view === "trend" ? trendData.length === 0 : view === "tempo" ? tempoData.length === 0 : stats.length === 0;
@@ -260,6 +260,7 @@ export function RatingChartPanel({ trendData, chartData, tempoData = [], stats, 
           <button
             key={v.key}
             type="button"
+            aria-pressed={view === v.key}
             onClick={() => setView(v.key)}
             style={{ ...st.btn, ...(view === v.key ? st.btnActive : {}) }}
           >

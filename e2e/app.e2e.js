@@ -1,16 +1,6 @@
 import { test, expect } from "@playwright/test";
 
 const KEY = "billiards-club-data";
-// Preserve the original 1.1.6 regression suite as a comparison baseline.
-// Modern navigation and the new flows are exercised in design.e2e.js.
-test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
-    if (sessionStorage.getItem("classic-selected")) return;
-    sessionStorage.setItem("classic-selected", "1");
-    localStorage.setItem("billiards-design-mode", "classic");
-  });
-});
-
 // Seeds storage before the app loads (skips onboarding).
 async function seed(page, data) {
   await page.addInitScript(
@@ -34,8 +24,21 @@ const scores = (page) => page.locator('[aria-label^="Счёт:"]').allTextConten
 
 async function openGame(page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Русский бильярд" }).click();
+  await openGateIfShown(page);
 }
+
+async function openGateIfShown(page) {
+  const gate = page.getByRole("button", { name: "Русский бильярд", exact: true });
+  await expect(gate.or(page.locator("nav")).first()).toBeVisible();
+  if (await gate.isVisible()) await gate.click();
+}
+
+async function more(page, section) {
+  await page.locator("nav").getByRole("button", { name: "Ещё", exact: true }).click();
+  await page.getByRole("button", { name: new RegExp(`^${section}`) }).click();
+}
+
+const ordinary = page => page.getByRole("button", { name: "▣ Обычный", exact: true }).click();
 
 test("first run: onboarding, add players, play, undo, finish, persists", async ({ page }) => {
   await page.goto("/");
@@ -47,6 +50,7 @@ test("first run: onboarding, add players, play, undo, finish, persists", async (
   }
   await page.getByRole("button", { name: "Выбрать всех" }).click();
   await page.getByRole("button", { name: "Начать партию" }).click();
+  await ordinary(page);
   await expect(page.getByText("Партия идёт")).toBeVisible();
 
   await page.getByRole("button", { name: "Добавить: Антон" }).click();
@@ -62,11 +66,12 @@ test("first run: onboarding, add players, play, undo, finish, persists", async (
   expect(Object.values(game.scores).sort()).toEqual([0, 2]);
 
   await page.reload();
+  await ordinary(page);
   await expect(page.getByText("Партия идёт")).toBeVisible();
 
   await page.getByRole("button", { name: "Завершить партию" }).click();
-  await expect(page.getByRole("button", { name: /К рейтингу/ })).toBeVisible();
-  await page.getByRole("button", { name: /К рейтингу/ }).click();
+  await expect(page.getByRole("button", { name: /К статистике/ })).toBeVisible();
+  await page.getByRole("button", { name: /К статистике/ }).click();
   await expect.poll(async () => (await stored(page)).matches.length).toBe(1);
   const m = (await stored(page)).matches[0];
   expect(Object.values(m.scores).sort()).toEqual([0, 2]);
@@ -77,7 +82,6 @@ test("big mode: fast taps all count", async ({ page }) => {
   await openGame(page);
   await page.getByRole("button", { name: "Выбрать всех" }).click();
   await page.getByRole("button", { name: "Начать партию" }).click();
-  await page.getByRole("button", { name: /Крупный режим/ }).click();
   const score = page.locator('[aria-label^="Счёт:"]').first();
   const box = await score.boundingBox();
   for (let i = 0; i < 8; i++) await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2 + 60);
@@ -94,6 +98,7 @@ test("a game saved by an older version still opens with its score", async ({ pag
     })
   );
   await page.goto("/");
+  await ordinary(page);
   await expect(page.getByText("Партия идёт")).toBeVisible();
   await expect(page.getByRole("button", { name: "Добавить: Антон" })).toBeVisible();
   await expect.poll(() => scores(page)).toEqual(["5", "3"]);
@@ -106,37 +111,37 @@ test("deleting a match asks first, goes to trash and can be restored", async ({ 
   await openGame(page);
   await page.locator("nav").getByRole("button", { name: "История" }).click();
   page.once("dialog", (d) => d.dismiss());
-  await page.getByRole("button", { name: "Удалить партию" }).click();
+  await page.getByRole("button", { name: "Действия с партией" }).click();
+  await page.getByRole("button", { name: "Удалить партию", exact: true }).click();
   expect((await stored(page)).matches).toHaveLength(1);
   page.once("dialog", (d) => d.accept());
-  await page.getByRole("button", { name: "Удалить партию" }).click();
+  await page.getByRole("button", { name: "Действия с партией" }).click();
+  await page.getByRole("button", { name: "Удалить партию", exact: true }).click();
   await expect.poll(async () => (await stored(page)).trash.length).toBe(1);
   await page.getByRole("button", { name: "Вернуть" }).first().click();
   await expect.poll(async () => (await stored(page)).matches.length).toBe(1);
 });
 
-test("theme switch and CSV export", async ({ page }) => {
+test("fixed tab palette and CSV export", async ({ page }) => {
   const match = { id: "m1", date: "2024-05-01T10:00:00Z", participants: ["p1", "p2"], scores: { p1: 8, p2: 3 }, winnerId: "p1", gameType: "russian" };
   await seed(page, base({ matches: [match] }));
   await openGame(page);
-  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await more(page, "Копии и экспорт");
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: /Таблица \(CSV\)/ }).click()]);
   expect(download.suggestedFilename()).toMatch(/\.csv$/);
   const text = await (await download.createReadStream()).toArray().then((c) => Buffer.concat(c).toString("utf8"));
   expect(text).toContain("Антон");
   expect(text).toContain("История партий");
 
-  const toggle = page.getByRole("switch", { name: "Тёмная тема" });
-  await expect(toggle).toHaveAttribute("aria-checked", "false");
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-checked", "true");
-  await expect.poll(async () => (await stored(page)).theme).toBe("dark");
+  await expect(page.locator(".modern-app")).toHaveAttribute("data-theme", "dark");
+  await expect(page.getByRole("switch", { name: "Тёмная тема" })).toHaveCount(0);
 });
 
 test("wipe device data needs the confirmation word", async ({ page }) => {
   await seed(page, base());
   await openGame(page);
-  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await more(page, "Копии и экспорт");
+  await page.getByText("Удаление данных", { exact: true }).click();
   page.once("dialog", (d) => d.accept("нет"));
   await page.getByRole("button", { name: "Удалить мои данные с устройства" }).click();
   expect((await stored(page)).players).toHaveLength(2);
@@ -159,6 +164,7 @@ test("two games at once: each table keeps its own score", async ({ page }) => {
   await page.getByRole("button", { name: "Антон", exact: true }).click();
   await page.getByRole("button", { name: "Игорь", exact: true }).click();
   await page.getByRole("button", { name: "Начать партию" }).click();
+  await ordinary(page);
   await page.getByRole("button", { name: "Добавить: Антон" }).click();
 
   await page.getByRole("button", { name: /Новая партия за другим столом/ }).click();
@@ -167,16 +173,18 @@ test("two games at once: each table keeps its own score", async ({ page }) => {
   await page.getByRole("button", { name: "Сергей", exact: true }).click();
   await page.getByRole("button", { name: "Ваня", exact: true }).click();
   await page.getByRole("button", { name: "Начать партию" }).click();
+  await ordinary(page);
   await page.getByRole("button", { name: "Добавить: Ваня" }).click();
   await page.waitForTimeout(120);
   await page.getByRole("button", { name: "Добавить: Ваня" }).click();
 
-  await expect.poll(async () => (await stored(page)).activeGames.length).toBe(2);
+  await expect.poll(async () => (await stored(page)).activeGames?.length).toBe(2);
   await page.getByRole("button", { name: /Все партии \(2\)/ }).click();
   await page.getByRole("button", { name: /Открыть партию: Антон, Игорь/ }).click();
+  await ordinary(page);
   await expect.poll(() => scores(page)).toEqual(["1", "0"]);
   await page.getByRole("button", { name: "Завершить партию" }).click();
-  await page.getByRole("button", { name: /К рейтингу/ }).click();
+  await page.getByRole("button", { name: /К статистике/ }).click();
   const s = await stored(page);
   expect(s.matches).toHaveLength(1);
   expect(s.activeGames).toHaveLength(1);
@@ -205,7 +213,7 @@ test("kolhoz: rounds with position change, points by ball value", async ({ page 
 
   await page.getByRole("button", { name: "Завершить партию" }).click();
   await expect(page.getByText(/Расчёт за 1 кр/)).toBeVisible();
-  await page.getByRole("button", { name: /К рейтингу/ }).click();
+  await page.getByRole("button", { name: /К статистике/ }).click();
   const m = (await stored(page)).matches[0];
   expect(m).not.toHaveProperty("stake");
   expect(m.kolhozNet).toEqual({ p4: 6, p1: -6, p3: 0 }); // Ваня забивал Антону
@@ -214,7 +222,7 @@ test("kolhoz: rounds with position change, points by ball value", async ({ page 
 test("feedback form is in the «Ещё» tab", async ({ page }) => {
   await seed(page, base());
   await openGame(page);
-  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await more(page, "Помощь и обратная связь");
   await expect(page.getByRole("heading", { name: /Предложения и ошибки/ })).toBeVisible();
   await page.getByRole("button", { name: "Отправить" }).click();
   await expect(page.getByText("Напишите хотя бы пару слов")).toBeVisible();
@@ -223,7 +231,7 @@ test("feedback form is in the «Ещё» tab", async ({ page }) => {
 test("«Ещё» shows how to install the app and a share button", async ({ page }) => {
   await seed(page, base());
   await openGame(page);
-  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await more(page, "Помощь и обратная связь");
   await expect(page.getByRole("heading", { name: /Установить на телефон/ })).toBeVisible();
   // no browser install prompt in tests → Android instructions (Pixel 7 profile)
   await expect(page.getByText(/Установить приложение» или «Добавить на главный экран/)).toBeVisible();
@@ -233,8 +241,8 @@ test("«Ещё» shows how to install the app and a share button", async ({ page
 test("a safety copy can be deleted; the data section is named plainly", async ({ page }) => {
   await seed(page, base({ matches: [{ id: "m1", date: "2024-05-01T10:00:00Z", participants: ["p1", "p2"], scores: { p1: 8, p2: 3 }, winnerId: "p1", gameType: "russian" }] }));
   await openGame(page);
-  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
-  await expect(page.getByRole("heading", { name: "Удаление данных" })).toBeVisible();
+  await more(page, "Копии и экспорт");
+  await expect(page.getByText("Удаление данных", { exact: true })).toBeVisible();
   const copies = () => page.evaluate(() => JSON.parse(localStorage.getItem("billiards-safety-copies") || "[]").length);
   await expect.poll(copies).toBe(1); // automatic copy on start
   page.once("dialog", (d) => d.accept());
@@ -253,7 +261,7 @@ test("editing a kolhoz round updates the winner and pair totals together", async
   }] }));
   await openGame(page);
   await page.locator("nav").getByRole("button", { name: "История" }).click();
-  await page.getByText("Антон (6)", { exact: true }).first().click();
+  await page.locator(".history-row").filter({ hasText: "Антон" }).click();
   await page.getByRole("button", { name: /Исправить счёт/ }).click();
   await page.getByRole("spinbutton", { name: "Антон · круг 1" }).fill("10");
   await page.getByRole("spinbutton", { name: "Игорь · круг 1" }).fill("1");
@@ -272,7 +280,7 @@ test("password sign-in reports failure and clears the password; privacy remains 
     await route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "invalid_grant", error_description: "Invalid login credentials" }) });
   });
   await openGame(page);
-  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await more(page, "Клуб");
   await page.getByText("Вход по паролю", { exact: true }).click();
   await page.getByPlaceholder("Ваш email").fill("review-test@example.com");
   await page.getByLabel("Пароль аккаунта").fill("test-password-only");
@@ -281,6 +289,7 @@ test("password sign-in reports failure and clears the password; privacy remains 
   expect(submitted.email).toBe("review-test@example.com");
   expect(submitted.password).toBe("test-password-only");
   await expect(page.getByLabel("Пароль аккаунта")).toHaveValue("");
+  await more(page, "О приложении");
   await expect(page.getByRole("link", { name: "Политика конфиденциальности" })).toHaveAttribute("href", "privacy.html");
 });
 
@@ -299,12 +308,14 @@ test("password sign-in opens the authenticated club controls without an email co
     }
   });
   await openGame(page);
-  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await more(page, "Клуб");
   await page.getByText("Вход по паролю", { exact: true }).click();
   await page.getByPlaceholder("Ваш email").fill(user.email);
   await page.getByLabel("Пароль аккаунта").fill("test-password-only");
   await page.getByRole("button", { name: "Войти по паролю", exact: true }).click();
   await expect(page.getByText("Вы вошли как review-test@example.com.")).toBeVisible();
+  await more(page, "Копии и экспорт");
+  await page.getByText("Удаление данных", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Удалить аккаунт", exact: true })).toBeVisible();
 });
 
@@ -315,7 +326,7 @@ test("untrusted player names remain text and oversized backup imports preserve d
   await expect(page.getByText(name, { exact: true })).toBeVisible();
   await expect(page.locator("img[src=x]")).toHaveCount(0);
   expect(await page.evaluate(() => window.__xss)).toBeUndefined();
-  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await more(page, "Копии и экспорт");
   let warning;
   page.once("dialog", async (dialog) => {
     warning = dialog.message();
@@ -329,7 +340,7 @@ test("untrusted player names remain text and oversized backup imports preserve d
 test("invalid backup JSON structure cannot wipe existing players", async ({ page }) => {
   await seed(page, base());
   await openGame(page);
-  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await more(page, "Копии и экспорт");
   const message = page.waitForEvent("dialog");
   await page.locator('input[type="file"]').setInputFiles({ name: "backup.json", mimeType: "application/json", buffer: Buffer.from("{}") });
   const dialog = await message;
@@ -373,7 +384,7 @@ test("club rules gate sync, private reports work, and blocking hides club conten
     await route.fulfill({ contentType: "application/json", body: JSON.stringify(response) });
   });
   await openGame(page);
-  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await more(page, "Клуб");
   await page.getByText("Вход по паролю", { exact: true }).click();
   await page.getByPlaceholder("Ваш email").fill(user.email);
   await page.getByLabel("Пароль аккаунта").fill("test-password-only");
@@ -385,6 +396,9 @@ test("club rules gate sync, private reports work, and blocking hides club conten
   await page.getByRole("checkbox", { name: "Я прочитал и принимаю правила клубов" }).check();
   await page.getByRole("button", { name: "Принять правила клубов" }).click();
   await expect.poll(() => reads).toBeGreaterThan(0);
+  await expect(page.getByRole("button", { name: "Пожаловаться на содержимое или участника" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Заблокировать клуб и скрыть его данные" })).toHaveCount(0);
+  await more(page, "Помощь и обратная связь");
   await page.getByRole("button", { name: "Пожаловаться на содержимое или участника" }).click();
   await page.getByLabel("На кого жалоба").selectOption(user.id);
   await page.getByLabel("Причина жалобы").fill("Тестовое нарушение, без реальных данных");
@@ -398,14 +412,14 @@ test("club rules gate sync, private reports work, and blocking hides club conten
   await page.getByRole("button", { name: "Заблокировать клуб и скрыть его данные" }).click();
   await expect.poll(() => removed).toBe(true);
   await expect.poll(async () => (await stored(page)).players).toEqual([]);
-  await page.getByRole("button", { name: "Русский бильярд" }).click();
-  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await openGateIfShown(page);
+  await more(page, "Клуб");
   await expect(page.getByText("Заблокированные клубы на этом устройстве:")).toBeVisible();
   await expect(page.getByRole("button", { name: "Снять блокировку" })).toBeVisible();
   const afterBlock = reads;
   await page.reload();
-  await page.getByRole("button", { name: "Русский бильярд" }).click();
-  await page.locator("nav").getByRole("button", { name: "Ещё" }).click();
+  await openGateIfShown(page);
+  await more(page, "Клуб");
   await expect(page.getByRole("button", { name: "Снять блокировку" })).toBeVisible();
   expect(reads).toBe(afterBlock);
 });

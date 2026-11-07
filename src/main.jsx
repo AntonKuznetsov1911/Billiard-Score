@@ -1,7 +1,7 @@
 import React from "react";
 import "./fonts.js";
 import { createRoot } from "react-dom/client";
-import DesignShell from "./DesignShell.jsx";
+import BilliardsTracker from "./BilliardsTracker.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import UpdateBanner from "./UpdateBanner.jsx";
 import { pingUsage } from "./analytics.js";
@@ -36,7 +36,7 @@ if (typeof window !== "undefined" && !window.storage) {
 
 createRoot(document.getElementById("root")).render(
   <ErrorBoundary>
-    <DesignShell />
+    <BilliardsTracker />
     <UpdateBanner />
   </ErrorBoundary>
 );
