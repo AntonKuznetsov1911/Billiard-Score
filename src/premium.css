@@ -227,11 +227,6 @@
   filter: drop-shadow(0 2px 4px #0009);
 }
 
-.gate-icon-eight {
-  clip-path: circle(35% at 49.7% 47.7%);
-  transform: translateY(1px) scale(1.28);
-}
-
 .discipline-gate button,
 .premium-home :is(.portrait-select, .discipline-grid button, .premium-options button, .premium-switch, [role="tab"]),
 .avatar-picker .portrait-select {

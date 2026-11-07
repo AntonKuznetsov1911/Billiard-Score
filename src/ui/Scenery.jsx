@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { COLORS } from "../constants.js";
 import gatePyramid from "../assets/gate-pyramid.webp";
-import gateEight from "../assets/gate-eight.webp";
+import poolPyramid from "../assets/pool-pyramid.webp";
 import tableRussianPhoto from "../assets/table-russian.webp";
 import tablePoolPhoto from "../assets/table-pool.webp";
 import tableOffPhoto from "../assets/table-off.webp";
@@ -78,8 +78,8 @@ export function DisciplineGate({ onPick }) {
           <span>Русский бильярд</span>
         </button>
         <button style={gateStyles.option} onClick={() => onPick("pool")}>
-          <img src={gateEight} className="gate-icon gate-icon-eight" alt="" width="44" height="44" />
           <span>Pool</span>
+          <img src={poolPyramid} className="gate-icon gate-icon-pyramid" alt="" width="44" height="44" />
         </button>
       </div>
     </div>
