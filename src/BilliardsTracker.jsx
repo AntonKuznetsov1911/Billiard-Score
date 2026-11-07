@@ -2086,7 +2086,7 @@ export default function BilliardsTracker() {
                           <span><PlayerBall color={playerColor(p.id)} size={11} /> {p.name}{atTable && " · за столом"}</span>
                         </button>
                         {managePlayers && <div className="portrait-tools">
-                          <button className="premium-link" aria-label={`Иконка игрока ${p.name}`} onClick={() => setAvatarPlayerId(p.id)}>Иконка</button>
+                          <button className="premium-link" aria-label={`Иконка игрока ${p.name}`} onClick={() => { haptic("light"); setAvatarPlayerId(p.id); }}>Иконка</button>
                           <button className="premium-link" aria-label={`Удалить ${p.name}`} onClick={() => removePlayer(p.id)}>×</button>
                         </div>}
                       </div>;
@@ -2145,8 +2145,8 @@ export default function BilliardsTracker() {
                       <p style={styles.pickLabel}>До скольки</p>
                       <div className="premium-options">
                         {[8, 9, 10].map(goal => <button key={goal} aria-pressed={!customGoal && (goalOverride || 8) === goal}
-                          onClick={() => { setCustomGoal(false); setGoalOverride(goal); setHandicaps({}); }}>{goal}</button>)}
-                        <button aria-pressed={customGoal} onClick={() => { setCustomGoal(true); setGoalOverride(null); setHandicaps({}); }}>Свой</button>
+                          onClick={() => { haptic("light"); setCustomGoal(false); setGoalOverride(goal); setHandicaps({}); }}>{goal}</button>)}
+                        <button aria-pressed={customGoal} onClick={() => { haptic("light"); setCustomGoal(true); setGoalOverride(null); setHandicaps({}); }}>Свой</button>
                       </div>
                       {customGoal && <input style={{ ...styles.input, marginTop: 8, width: "100%" }} aria-label="Цель в шарах"
                         type="number" min="1" max="99" value={goalOverride ?? ""}
@@ -2159,7 +2159,7 @@ export default function BilliardsTracker() {
                   )}
                   {!isKolhoz && data.gameType === "russian" && selected.length >= 2 && (
                     <button type="button" className="premium-switch" role="switch" aria-checked={handicapOpen}
-                      onClick={() => setHandicapOpen(open => !open)}>
+                      onClick={() => { haptic("light"); setHandicapOpen(open => !open); }}>
                       Фора (гандикап)<span aria-hidden="true" />
                     </button>
                   )}
@@ -2185,7 +2185,7 @@ export default function BilliardsTracker() {
 
                       <div className="premium-options" role="group" aria-label="Выбрать разбивающего">
                         {selected.map(id => <button key={id} aria-label={`Первым разбивает: ${nameById(id)}`} aria-pressed={manualBreaker === id} disabled={diceRolling}
-                          onClick={() => { setDiceRolls(null); setManualBreaker(id); }}>{nameById(id)}</button>)}
+                          onClick={() => { haptic("light"); setDiceRolls(null); setManualBreaker(id); }}>{nameById(id)}</button>)}
                       </div>
                       {diceRolls && (
                         <div style={styles.diceRow}>
@@ -2325,7 +2325,7 @@ export default function BilliardsTracker() {
                   {selected.length > 0 && advancedOpen && (
                     <button type="button" className="premium-switch" role="switch"
                       aria-checked={startLarge ?? (selected.length === 2 && !isKolhoz)}
-                      onClick={() => setStartLarge(!(startLarge ?? (selected.length === 2 && !isKolhoz)))}>
+                      onClick={() => { haptic("light"); setStartLarge(!(startLarge ?? (selected.length === 2 && !isKolhoz))); }}>
                       Показать счёт на весь экран<span aria-hidden="true" />
                     </button>
                   )}
@@ -3108,7 +3108,7 @@ export default function BilliardsTracker() {
 
 
               <>{settingsPage === "appearance" && (<div style={styles.card}>
-                <div className="native-haptics-row"><span>Вибрация при счёте</span><button className="toggle-pill" aria-pressed={hapticsEnabled} onClick={() => { const next = !hapticsEnabled; setHapticsEnabled(next); writeLocal("billiards-haptics", next ? "on" : "off"); }}>{hapticsEnabled ? "Включена" : "Выключена"}</button></div>
+                <div className="native-haptics-row"><span>Вибрация при выборе и счёте</span><button className="toggle-pill" aria-pressed={hapticsEnabled} onClick={() => { const next = !hapticsEnabled; setHapticsEnabled(next); writeLocal("billiards-haptics", next ? "on" : "off"); }}>{hapticsEnabled ? "Включена" : "Выключена"}</button></div>
 
               </div>)}</>
 
@@ -3847,6 +3847,7 @@ export default function BilliardsTracker() {
               {PLAYER_AVATARS.map(([id, label]) => (
                 <button key={id} className="portrait-select" aria-pressed={data.players.find(p => p.id === avatarPlayerId)?.avatar === id}
                   onClick={() => {
+                    haptic("light");
                     updateData(prev => ({ ...prev, players: prev.players.map(p => p.id === avatarPlayerId ? { ...p, avatar: id } : p) }));
                     setAvatarPlayerId(null);
                   }}>

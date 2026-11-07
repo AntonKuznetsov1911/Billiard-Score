@@ -185,8 +185,8 @@ test("two games at once: each table keeps its own score", async ({ page }) => {
   await expect.poll(() => scores(page)).toEqual(["1", "0"]);
   await page.getByRole("button", { name: "Завершить партию" }).click();
   await page.getByRole("button", { name: /К статистике/ }).click();
+  await expect.poll(async () => (await stored(page)).matches.length).toBe(1);
   const s = await stored(page);
-  expect(s.matches).toHaveLength(1);
   expect(s.activeGames).toHaveLength(1);
   expect(s.activeGames[0].scores).toEqual({ p3: 0, p4: 2 });
 });

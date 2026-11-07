@@ -160,6 +160,9 @@ test("mobile layouts: both disciplines, fixed palettes and focused pages fit the
   await expect(page.locator(".modern-app")).toHaveAttribute("data-theme","light"); await shot("01-home-russian");
   await page.getByRole("tab",{name:/Pool/}).click(); await shot("02-home-pool");
   await page.getByRole("tab",{name:"Русский бильярд",exact:true}).click();
+  await page.getByRole("button", {name:"Колхоз", exact:true}).click();
+  await shot("03-kolhoz");
+  await page.getByRole("button", {name:"Американка", exact:true}).click();
   await setupPair(page); await shot("03-setup");
   await page.getByRole("button",{name:"Начать партию",exact:true}).scrollIntoViewIfNeeded();
   if(process.env.DESIGN_SCREENSHOT_DIR) await page.screenshot({path:`${process.env.DESIGN_SCREENSHOT_DIR}/03-format.png`, animations:"disabled"});
@@ -184,13 +187,19 @@ test("player portrait, match goal and manual breaker work through the premium se
   await seed(page); await open(page);
   await page.getByRole("button", {name:"Управление"}).click();
   await page.getByRole("button", {name:"Иконка игрока Антон"}).click();
-  await page.getByRole("dialog", {name:"Иконка игрока"}).getByRole("button", {name:"Лев"}).click();
-  await expect.poll(async () => (await stored(page)).players[0].avatar).toBe("lion");
+  const picker = page.getByRole("dialog", {name:"Иконка игрока"});
+  await expect(picker.locator("img")).toHaveCount(16);
+  await expect.poll(() => picker.locator("img").evaluateAll(images => images.every(img => img.complete && img.naturalWidth > 0))).toBe(true);
+  if (process.env.DESIGN_SCREENSHOT_DIR) {
+    await page.screenshot({path:`${process.env.DESIGN_SCREENSHOT_DIR}/09-avatars.png`, animations:"disabled"});
+  }
+  await picker.getByRole("button", {name:"Космонавт"}).click();
+  await expect.poll(async () => (await stored(page)).players[0].avatar).toBe("astronaut");
   await page.reload();
   await pickRussian(page);
   await page.getByRole("button", {name:"Управление"}).click();
   await page.getByRole("button", {name:"Иконка игрока Антон"}).click();
-  await expect(page.getByRole("dialog").getByRole("button",{name:"Лев"})).toHaveAttribute("aria-pressed","true");
+  await expect(page.getByRole("dialog").getByRole("button",{name:"Космонавт"})).toHaveAttribute("aria-pressed","true");
   await page.getByRole("dialog").getByRole("button",{name:"Закрыть"}).click();
   await setupPair(page);
   await page.getByRole("button", {name:"9", exact:true}).click();

@@ -69,7 +69,7 @@ export function Confetti({ active }) {
 }
 export function DisciplineGate({ onPick }) {
   return (
-    <div style={gateStyles.wrap} className="no-print">
+    <div style={gateStyles.wrap} className="no-print discipline-gate">
       <p style={gateStyles.prompt}>Во что будете играть?</p>
       <div style={gateStyles.options}>
         <button style={gateStyles.option} onClick={() => onPick("russian")}>

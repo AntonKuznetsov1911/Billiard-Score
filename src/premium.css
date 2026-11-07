@@ -209,3 +209,26 @@
 }
 .premium-switch[aria-checked="true"] span { background: linear-gradient(140deg, #b98034, #e8c477); }
 .premium-switch[aria-checked="true"] span::after { transform: translateX(19px); }
+
+.player-portrait-image {
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.discipline-gate button,
+.premium-home :is(.portrait-select, .discipline-grid button, .premium-options button, .premium-switch, [role="tab"]),
+.avatar-picker .portrait-select {
+  transition: transform .14s ease-out, border-color .14s ease-out, box-shadow .14s ease-out;
+}
+
+.discipline-gate button:active,
+.premium-home :is(.portrait-select, .discipline-grid button, .premium-options button, .premium-switch, [role="tab"]):active:not(:disabled),
+.avatar-picker .portrait-select:active {
+  transform: scale(.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar-picker .portrait-select { transition: none; }
+}

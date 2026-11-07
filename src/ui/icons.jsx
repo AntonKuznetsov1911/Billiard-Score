@@ -40,9 +40,19 @@ export function PyramidMini({ size = 16 }) {
       style={{ display: "inline-block", verticalAlign: "-2px" }}
       aria-hidden="true"
     >
-      <circle cx="10" cy="4.2" r="3.5" fill="#EDE0C8" stroke="#00000033" strokeWidth="0.4" />
-      <circle cx="6" cy="11" r="3.5" fill="#EDE0C8" stroke="#00000033" strokeWidth="0.4" />
-      <circle cx="14" cy="11" r="3.5" fill="#EDE0C8" stroke="#00000033" strokeWidth="0.4" />
+      {Array.from({ length: 5 }, (_, row) =>
+        Array.from({ length: row + 1 }, (_, ball) => (
+          <circle
+            key={`${row}-${ball}`}
+            cx={10 + (ball - row / 2) * 3.55}
+            cy={2.1 + row * 3.15}
+            r="1.72"
+            fill="#EDE0C8"
+            stroke="#a5895e"
+            strokeWidth=".25"
+          />
+        ))
+      )}
     </svg>
   );
 }

@@ -153,6 +153,21 @@ export const RUSSIAN_MODES = {
 export const AVATAR_COLORS = ["#E4032E", "#0057B8", "#F0B429", "#5B2C82", "#0B7A3E", "#FF7F11", "#3D6E8F", "#7A1F2B", "#20B2AA", "#C08A3E"];
 
 export const PLAYER_AVATARS = [
-  ["cue", "Кий"], ["lion", "Лев"], ["wolf", "Волк"],
-  ["panther", "Пантера"], ["helmet", "Шлем"], ["eight", "Восьмёрка"],
+  ["cue", "Кий"],
+  ["lion", "Лев", "01_lev"],
+  ["helmet", "Рыцарь", "02_rytsar"],
+  ["wolf", "Волк", "03_volk"],
+  ["panther", "Пантера", "04_pantera"],
+  ["gentleman", "Джентльмен", "05_dzhentlmen"],
+  ["cowboy", "Ковбой", "06_kovboy"],
+  ["hood", "В капюшоне", "07_v_kapyushone"],
+  ["samurai", "Самурай", "08_samuray"],
+  ["gorilla", "Горилла", "09_gorilla"],
+  ["joker", "Джокер", "10_dzhoker"],
+  ["skull", "Череп", "11_cherep"],
+  ["astronaut", "Космонавт", "12_kosmonavt"],
+  ["shark", "Акула", "13_akula"],
+  ["dragon", "Дракон", "14_drakon"],
+  ["eight", "Восьмёрка", "15_shar_8"],
+  ["bull", "Бык", "16_byk"],
 ];
