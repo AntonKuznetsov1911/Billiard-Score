@@ -2068,7 +2068,7 @@ export default function BilliardsTracker() {
                     <button className="premium-link" onClick={addPlayer}>＋ Добавить игрока</button>
                   </div>
                   {error && <div role="alert" style={styles.errorText}>{error}</div>}
-                  {data.players.length >= 2 && <button className="premium-link" onClick={selectAllPlayers}>Выбрать всех</button>}
+                  {data.players.length >= 2 && <button className="premium-link premium-select-all" onClick={selectAllPlayers}>Выбрать всех</button>}
                 </div>
               )}
 

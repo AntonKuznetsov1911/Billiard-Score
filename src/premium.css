@@ -109,6 +109,7 @@
 .portrait-tools { justify-content: center; gap: 0; }
 .premium-add { margin-top: 12px; }
 .premium-add input { flex: 1 1 115px; min-width: 0; }
+.premium-select-all { margin-top: 8px; }
 .premium-link {
   min-height: 44px;
   color: #efd099;

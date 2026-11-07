@@ -1,7 +1,7 @@
 {
   "name": "tvoy-billiard",
   "private": true,
-  "version": "1.2.10-preview",
+  "version": "1.2.11-preview",
   "description": "Твой бильярд — учёт партий, счёта и статистики русского бильярда и пула.",
   "type": "module",
   "scripts": {
