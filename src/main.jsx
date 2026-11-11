@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import BilliardsTracker from "./BilliardsTracker.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import UpdateBanner from "./UpdateBanner.jsx";
-import { pingUsage } from "./analytics.js";
+import PrivacyWelcome from "./PrivacyWelcome.jsx";
 import { initInstallPrompt } from "./install.js";
 
 // Before render: Chrome may offer installation right away.
@@ -36,10 +36,9 @@ if (typeof window !== "undefined" && !window.storage) {
 
 createRoot(document.getElementById("root")).render(
   <ErrorBoundary>
-    <BilliardsTracker />
-    <UpdateBanner />
+    <PrivacyWelcome>
+      <BilliardsTracker />
+      <UpdateBanner />
+    </PrivacyWelcome>
   </ErrorBoundary>
 );
-
-// Anonymous daily usage count, after the app has started.
-if (!__APP_VERSION__.includes("preview")) setTimeout(pingUsage, 3000);

@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { if (sessionStorage.getItem("privacy-test-seeded")) return; sessionStorage.setItem("privacy-test-seeded", "1"); localStorage.setItem("billiards-privacy-acknowledged", "2026-11-06"); }); });
+
 const players = [{ id:"p1",name:"Антон",color:"#E4032E" },{ id:"p2",name:"Игорь",color:"#0057B8" },{id:"p3",name:"Алексей",color:"#C08A3E"}];
 const base = extra => ({ players, matches:[],trash:[],activeGames:[],theme:"dark",gameType:"russian",russianMode:"free",updatedAt:1,...extra });
 async function seed(page, data=base()) {

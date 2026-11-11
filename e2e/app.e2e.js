@@ -14,6 +14,8 @@ async function seed(page, data) {
   );
 }
 
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { if (sessionStorage.getItem("privacy-test-seeded")) return; sessionStorage.setItem("privacy-test-seeded", "1"); localStorage.setItem("billiards-privacy-acknowledged", "2026-11-06"); }); });
+
 const players = [
   { id: "p1", name: "Антон", color: "#E4032E" },
   { id: "p2", name: "Игорь", color: "#0057B8" },
@@ -147,7 +149,7 @@ test("wipe device data needs the confirmation word", async ({ page }) => {
   expect((await stored(page)).players).toHaveLength(2);
   page.once("dialog", (d) => d.accept("удалить"));
   await page.getByRole("button", { name: "Удалить мои данные с устройства" }).click();
-  await expect(page.getByText("Во что будете играть?")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Конфиденциальность", exact: true })).toBeVisible();
   expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("billiards-")))).toEqual([]);
 });
 

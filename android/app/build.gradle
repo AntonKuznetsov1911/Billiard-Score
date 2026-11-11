@@ -7,8 +7,8 @@ android {
         applicationId "io.github.antonkuznetsov1911.billiard"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 23
-        versionName "1.2.14-preview"
+        versionCode 24
+        versionName "1.2.15-preview"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
