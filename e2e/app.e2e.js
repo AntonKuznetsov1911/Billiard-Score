@@ -14,7 +14,7 @@ async function seed(page, data) {
   );
 }
 
-test.beforeEach(async ({ page }) => { await page.addInitScript(() => { if (sessionStorage.getItem("privacy-test-seeded")) return; sessionStorage.setItem("privacy-test-seeded", "1"); localStorage.setItem("billiards-privacy-acknowledged", "2026-11-06"); }); });
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { if (sessionStorage.getItem("privacy-test-seeded")) return; sessionStorage.setItem("privacy-test-seeded", "1"); localStorage.setItem("billiards-privacy-acknowledged", "2026-11-11"); }); });
 
 const players = [
   { id: "p1", name: "Антон", color: "#E4032E" },

@@ -1,5 +1,12 @@
 import { test, expect } from '@playwright/test';
 
+test('privacy: an earlier policy acknowledgement requires the updated policy', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('billiards-privacy-acknowledged', '2026-11-06'));
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Конфиденциальность', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Политика конфиденциальности' })).toContainText('не отправляет ежедневную аналитику');
+});
+
 test('privacy: first launch, explicit acknowledgement, persistence and unchanged games', async ({ page }) => {
   const requests = [];
   page.on('request', r => { if (r.url().includes('supabase.co')) requests.push(r.url()); });

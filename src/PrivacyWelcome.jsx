@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from "react";
-import { pingUsage } from "./analytics.js";
+import React, { useState } from "react";
 import privacyDocument from "../public/privacy.html?raw";
 import "./privacyWelcome.css";
 
 export const PRIVACY_KEY = "billiards-privacy-acknowledged";
-export const PRIVACY_VERSION = "2026-11-06";
+export const PRIVACY_VERSION = "2026-11-11";
 // Trusted, bundled policy only; never insert user or server content here.
 const policyText = privacyDocument.match(/<main>([\s\S]*?)<\/main>/)[1]
   .replace(/<a /g, '<a target="_blank" rel="noopener noreferrer" ');
@@ -16,11 +15,6 @@ export default function PrivacyWelcome({ children }) {
   });
   const [checked, setChecked] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => {
-    if (!accepted || __APP_VERSION__.includes("preview")) return;
-    const timer = setTimeout(pingUsage, 3000);
-    return () => clearTimeout(timer);
-  }, [accepted]);
 
   function continueToApp() {
     if (!checked) return;
