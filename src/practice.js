@@ -71,7 +71,26 @@ EXERCISES.filter(e=>e.id.startsWith("svoyak") && !e.cuePath).forEach(e=>{
  const g=ghostBall(e.object,e.objectAim||[2,0],.028);
  e.positions=[.65,.85,1].map(k=>[g[0]+(e.cue[0]-g[0])*k,g[1]+(e.cue[1]-g[1])*k]);
 });
-export const exercisesFor = type => EXERCISES.filter(e => !e.types || e.types.includes(type));
+// Keep old IDs for stored history, but remove unverified teaching cards from the catalog.
+EXERCISES.forEach(e=>{
+ if((e.id.startsWith("svoyak") && e.id!=="svoyak-return") || e.id.startsWith("break-svoyak"))e.hidden=true;
+ if(["side-series","line","cross","clearance"].includes(e.layout))e.series=true;
+});
+const spinLessons=[
+ {id:"svoyak-braking-spin",title:"Свояк: нижний тормозящий винт",angles:[140,145],tip:.27,tipX:-.22,
+  instruction:"Угол С–Ч–Л около 140–145°. Начальная резка — полшара. Нижний боковой винт смягчает отскок; играйте слабым размером, кий почти горизонтален. Для зеркальной позиции боковой винт меняется на противоположный.",tipLabel:"Нижний боковой, тормозящий отскок. Глубина — начальный ориентир, не точная величина."},
+ {id:"svoyak-upper-side",title:"Свояк в среднюю: верхний боковой",angles:[110,120],tip:-.27,tipX:-.22,
+  instruction:"Угол С–Ч–Л около 110–120°. Начальная резка — полшара. Верхнее и боковое вращение подбирают совместно: здесь нужен правильный для лузы верхний винт. Сохраняйте умеренный темп; зеркальная сторона требует противоположного бокового.",tipLabel:"Верхний боковой для этой позиции; справа/слева — в системе игрока, смотрящего вдоль кия."},
+];
+for(const e of spinLessons){
+ const object=[.88,.14],pocket=[1,0],v=[pocket[0]-object[0],pocket[1]-object[1]],a=Math.atan2(v[1],v[0]);
+ const positions=e.angles.map(deg=>[object[0]+.5*Math.cos(a+deg*Math.PI/180),object[1]+.5*Math.sin(a+deg*Math.PI/180)]);
+ EXERCISES.push({...e,types:["russian"],group:"Разбой и свояки",level:"Средний",goal:5,object,cue:positions[0],positions,cuePocket:pocket,placementOnly:true,
+  success:"Биток забит в указанную среднюю лузу. Отдельно запишите, был ли недокат, перебор или ошибка толщины."});
+}
+const side=EXERCISES.find(e=>e.id==="side-series");
+Object.assign(side,{instruction:"По шесть шаров плотным рядом у каждой средней лузы, биток в центре. Забивайте последовательно в средние, сохраняя биток в центральной зоне с выходом на следующий шар. После удара биток рукой не возвращайте. Сначала подберите остановку и небольшую коррекцию наката/оттяжки; боковой добавляйте только при необходимости.",success:"Запишите, сколько шаров забито за один непрерывный подход до промаха. Цель — вся расстановка с контролем выхода на следующий шар.",centerZone:true});
+export const exercisesFor = type => EXERCISES.filter(e => !e.hidden && (!e.types || e.types.includes(type)));
 export function ghostBall(object, pocket = [2, 0], radius = 0.024) {
   const dx = pocket[0] - object[0], dy = pocket[1] - object[1];
   const length = Math.hypot(dx, dy);
@@ -79,11 +98,12 @@ export function ghostBall(object, pocket = [2, 0], radius = 0.024) {
 }
 export function attempts(run) {
   const undone = new Set(run.undone || []);
-  return (run.events || []).filter(e => !undone.has(e.id)).sort((a,b) => a.at-b.at || a.id.localeCompare(b.id)).slice(0,10);
+  return (run.events || []).filter(e => !undone.has(e.id)).sort((a,b) => a.at-b.at || a.id.localeCompare(b.id)).slice(0,run.limit || 10);
 }
 export function cleanPractice(list) {
   if (!Array.isArray(list)) return [];
   return list.filter(r => r && typeof r.id === "string" && r.id.length <= 100 && EXERCISES.some(e => e.id === r.exerciseId) && Number.isFinite(r.startedAt) && r.startedAt > 0).slice(0,2000).map(r => ({
+    limit:Number.isInteger(r.limit) && r.limit>=4 && r.limit<=12 ? r.limit : 10,
     id:r.id, exerciseId:r.exerciseId, gameType:r.gameType === "pool" ? "pool" : "russian",
     playerId:typeof r.playerId === "string" ? r.playerId.slice(0,100) : null,
     startedAt:r.startedAt,
