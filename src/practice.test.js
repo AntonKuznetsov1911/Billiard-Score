@@ -14,6 +14,7 @@ describe("guided practice",()=>{
     const other={...run,events:[{id:"two",success:false,at:102}],undone:["one"]};
     const result=mergePractice([run],[other]);expect(result).toHaveLength(1);expect(attempts(result[0]).map(e=>e.id)).toEqual(["two"]);
     expect(mergePractice(result,result)).toEqual(result);
+    expect(mergePractice([other],[run])).toEqual(result);
   });
   it("preserves progress in normalization, merges, backups and reset generations",()=>{
     const a={...loadInitial(),practiceSessions:[run],updatedAt:101};

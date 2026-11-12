@@ -31,5 +31,8 @@ export function mergePractice(a,b,resetAt=0) {
     const old=runs.get(r.id);
     runs.set(r.id,old ? {...old,events:[...new Map([...old.events,...r.events].map(e=>[e.id,e])).values()],undone:[...new Set([...old.undone,...r.undone])]} : r);
   }
-  return [...runs.values()].sort((a,b)=>b.startedAt-a.startedAt || a.id.localeCompare(b.id));
+  return [...runs.values()].map(r => ({...r,
+    events:r.events.sort((a,b)=>a.at-b.at || a.id.localeCompare(b.id)),
+    undone:r.undone.sort(),
+  })).sort((a,b)=>b.startedAt-a.startedAt || a.id.localeCompare(b.id));
 }
