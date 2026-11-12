@@ -15,7 +15,7 @@ export function listSafetyCopies(storage) {
 }
 
 export function saveSafetyCopy(storage, data, reason, now = Date.now()) {
-  const hasContent = data && ((data.players && data.players.length) || (data.matches && data.matches.length));
+  const hasContent = data && ((data.players && data.players.length) || (data.matches && data.matches.length) || (data.practiceSessions && data.practiceSessions.length));
   if (!hasContent) return false;
   const copy = {
     ts: now,

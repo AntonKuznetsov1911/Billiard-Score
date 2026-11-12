@@ -1,3 +1,4 @@
+import { cleanPractice, mergePractice } from "./practice.js";
 import { AVATAR_COLORS, PLAYER_AVATARS, RUSSIAN_MODES } from "./constants.js";
 
 export function uid() {
@@ -6,6 +7,8 @@ export function uid() {
 
 export function loadInitial() {
   return {
+    practiceSessions: [],
+    practiceResetAt: 0,
     players: [],
     matches: [],
     trash: [],
@@ -371,6 +374,8 @@ export function normalizeData(input) {
   const parsed = isObj(input) ? input : {};
   const endedGames = cleanIds(parsed.endedGames, ENDED_LIMIT);
   return {
+    practiceSessions: cleanPractice(parsed.practiceSessions),
+    practiceResetAt: cleanStamp(parsed.practiceResetAt),
     players: sanitizePlayers(parsed.players),
     matches: sanitizeMatches(parsed.matches),
     trash: sanitizeTrash(parsed.trash),
@@ -554,6 +559,8 @@ export function mergeData(a, b) {
     deletedPlayers,
     endedGames,
     metaAt: Math.max(cleanStamp(older.metaAt), cleanStamp(newer.metaAt)),
+    practiceSessions: mergePractice(older.practiceSessions, newer.practiceSessions, Math.max(older.practiceResetAt || 0, newer.practiceResetAt || 0)),
+    practiceResetAt: Math.max(older.practiceResetAt || 0, newer.practiceResetAt || 0),
     updatedAt: Math.max(older.updatedAt || 0, newer.updatedAt || 0),
   };
 }

@@ -1,3 +1,4 @@
+import PracticePanel from "./PracticePanel.jsx";
 import { PLAYER_AVATARS } from "./constants.js";
 import { PlayerPortrait, DisciplineArt } from "./ui/PremiumGame.jsx";
 import poolPyramid from "./assets/pool-pyramid.webp";
@@ -166,6 +167,7 @@ export default function BilliardsTracker({ workspace }) {
   const [manualBreaker, setManualBreaker] = useState(null);
   const [nameInput, setNameInput] = useState("");
   const [selected, setSelected] = useState([]);
+  const [practiceOpen, setPracticeOpen] = useState(false);
   const [tab, setTab] = useState(workspace.initialAccount ? "settings" : "play");
   const [settingsPage, setSettingsPage] = useState(workspace.initialAccount ? "account" : null);
   const [statsView, setStatsView] = useState("players");
@@ -1592,14 +1594,16 @@ export default function BilliardsTracker({ workspace }) {
     if (
       !window.confirm(
         club
-          ? "Удалить всех игроков и всю историю партий? Данные очистятся и у всех участников клуба (прежнее состояние сохранится в истории изменений клуба)."
-          : "Удалить всех игроков и всю историю партий? Копия сохранится на этом устройстве, вернуть её можно в разделе «Резервная копия»."
+          ? "Удалить всех игроков, историю партий и тренировок? Данные очистятся и у всех участников клуба (прежнее состояние сохранится в истории изменений клуба)."
+          : "Удалить всех игроков, историю партий и тренировок? Копия сохранится на этом устройстве, вернуть её можно в разделе «Резервная копия»."
       )
     )
       return;
     takeSafetyCopy("clear-all");
     haptic("warning");
     updateData((prev) => ({
+      practiceSessions: [],
+      practiceResetAt: Date.now(),
       players: [],
       matches: [],
       trash: [...(prev.trash || []), ...prev.matches.map((m) => ({ ...m, deletedAt: Date.now() }))].slice(-300),
@@ -1782,6 +1786,7 @@ export default function BilliardsTracker({ workspace }) {
 
   const nativeBackRef = useRef(null);
   nativeBackRef.current = () => {
+    if (practiceOpen) { setPracticeOpen(false); return; }
     if (avatarPlayerId) return setAvatarPlayerId(null);
     if (resultCard) return closeResultCard();
     if (showOnboarding) return dismissOnboarding();
@@ -1841,7 +1846,7 @@ export default function BilliardsTracker({ workspace }) {
     );
   }
 
-  const home = !menuVisible || (tab === "play" && !activeGame);
+  const home = !menuVisible || (tab === "play" && !activeGame && !practiceOpen);
   const dark = !home;
   const styles = home ? makeHomeStyles(false) : makeStyles(true, data.gameType || "russian");
   const busyNow = busyPlayerIds(data.activeGames);
@@ -1973,12 +1978,13 @@ export default function BilliardsTracker({ workspace }) {
                 <SyncBadge status={isOffline ? "offline" : clubSync} compact />
               </div>
             )}
-            {!home && <div className="brand-row"><div><span className="brand-eyebrow">ТВОЙ БИЛЬЯРД</span><h1 className="page-heading">{tab === "play" ? "За столом" : tab === "history" ? "История" : tab === "rating" ? "Статистика" : ({account:"Аккаунт",club:"Клуб",appearance:"Вибрация",data:"Копии и экспорт",help:"Помощь",about:"О приложении"}[settingsPage] || "Ещё")}</h1></div></div>}
+            {!home && <div className="brand-row"><div><span className="brand-eyebrow">ТВОЙ БИЛЬЯРД</span><h1 className="page-heading">{tab === "play" ? (practiceOpen ? "Тренировка" : "За столом") : tab === "history" ? "История" : tab === "rating" ? "Статистика" : ({account:"Аккаунт",club:"Клуб",appearance:"Вибрация",data:"Копии и экспорт",help:"Помощь",about:"О приложении"}[settingsPage] || "Ещё")}</h1></div></div>}
           </header>
         )}
 
         <main style={styles.main} key={tab} className={home ? "tab-fade premium-setup" : "tab-fade"}>
-          {tab === "play" && (
+          {tab === "play" && practiceOpen && <PracticePanel data={data} updateData={updateData} onBack={() => setPracticeOpen(false)} />}
+          {tab === "play" && !practiceOpen && (
             <section>
               {!activeGame && (
                 <div className="premium-game-types">
@@ -2011,6 +2017,7 @@ export default function BilliardsTracker({ workspace }) {
                   </div>
                 </div>
               )}
+              {!activeGame && <button className="practice-entry" onClick={() => setPracticeOpen(true)}>Тренировка с упражнениями<small>Расстановка шаров · техника удара · 10 попыток</small></button>}
               {!activeGame && anyGameRunning && (
                 <div style={styles.cardFrosted}>
                   <div style={styles.liveHeader}>
