@@ -34,6 +34,8 @@ permissions:
 
 jobs:
   android:
+    # Web previews are reviewed before spending resources on Android builds.
+    if: github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[web-preview]')
     runs-on: ubuntu-latest
     env:
       HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}

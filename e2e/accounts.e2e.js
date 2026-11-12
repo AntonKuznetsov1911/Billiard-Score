@@ -9,7 +9,8 @@ test('practice: personal progress reaches a second device and stays out of guest
   await page.locator('nav').getByRole('button',{name:'Игра',exact:true}).click();
   await page.getByRole('button',{name:/Тренировка с упражнениями/}).click();
   await page.getByRole('button',{name:/01 Прямой удар/}).click();
-  await page.getByRole('button',{name:'Начать 10 попыток'}).click();
+  await page.getByRole('button',{name:'Начать выполнение'}).click();
+  await page.getByText('Или отмечать каждый удар',{exact:true}).click();
   await page.getByRole('button',{name:'Получилось',exact:true}).click();
   await expect.poll(()=>api.personal.get(a)?.data.practiceSessions?.[0]?.events.length).toBe(1);
   const other=await browser.newContext();await setup(other,api);const phone=await other.newPage();await phone.goto('/');await login(phone,'a@example.com');

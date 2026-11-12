@@ -8,7 +8,8 @@ test(`guided practice ${type}: save, undo, reload, finish without a match`,async
   await page.getByRole("button",{name:/Тренировка с упражнениями/}).click();
   await page.getByRole("button",{name:/01 Прямой удар/}).click();
   await expect(page.getByRole("img",{name:/Расстановка/})).toBeVisible();
-  await page.getByRole("button",{name:"Начать 10 попыток"}).click();
+  await page.getByRole("button",{name:"Начать выполнение"}).click();
+  await page.getByText("Или отмечать каждый удар",{exact:true}).click();
   await page.getByRole("button",{name:"Получилось",exact:true}).click();
   await page.getByRole("button",{name:"Не получилось",exact:true}).click();
   await page.getByRole("button",{name:"Отменить последнюю попытку"}).click();
@@ -18,6 +19,7 @@ test(`guided practice ${type}: save, undo, reload, finish without a match`,async
   await page.getByRole("button",{name:/Тренировка с упражнениями/}).click();
   await page.getByRole("button",{name:/01 Прямой удар/}).click();
   await expect(page.getByText("Попытки: 1 / 10",{exact:true})).toBeVisible();
+  await page.getByText("Или отмечать каждый удар",{exact:true}).click();
   for(let i=1;i<10;i++)await page.getByRole("button",{name:"Получилось",exact:true}).click();
   await expect(page.getByText("Упражнение завершено",{exact:true})).toBeVisible();
   const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem("billiards-club-data")));
