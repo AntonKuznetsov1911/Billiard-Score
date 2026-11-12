@@ -5,22 +5,21 @@ import "./premium.css";
 import { cacheAcceptedState as cacheLocalState } from "./localCache.js";
 import { validateBackupFile, parseBackup } from "./backupImport.js";
 import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense, lazy } from "react";
-import { saveToCloud, loadFromCloud, clearCloud } from "./cloudSync.js";
+import { clearCloud } from "./cloudSync.js";
+import { storageAdapter, workspaceStorage, workspaceId, purgeUserWorkspaces, DATA_KEY } from "./workspaceStorage.js";
+import { pushPersonalState } from "./personalSync.js";
 import { isCloudConfigured } from "./supabaseClient.js";
 import {
   sendMagicLink,
   signInWithPassword,
   verifyEmailOtp,
   signInWithGoogle,
-  onAuthChange,
   onNativeAuthReturn,
-  getSession,
   signOut as clubSignOut,
   deleteMyAccount,
   createClub,
   joinClub,
   leaveClub,
-  getMyClub,
   fetchClubState,
   pushClubState,
   subscribeClubState,
@@ -126,34 +125,38 @@ const CLUB_SYNCED_KEY = "billiards-club-synced";
 // Which of the running games this device has open (each table/phone follows its own).
 const CURRENT_GAME_KEY = "billiards-current-game";
 
-const readLocal = (key) => {
-  try {
-    return window.localStorage.getItem(key);
-  } catch (e) {
-    return null;
-  }
-};
-const writeLocal = (key, value) => {
-  try {
-    if (value) window.localStorage.setItem(key, value);
-    else window.localStorage.removeItem(key);
-  } catch (e) {
-    // storage unavailable
-  }
-};
-
-// Club state written by any member is untrusted — sanitize before merging.
+// Club state is untrusted.
 const mergeWithRemote = (local, remoteRaw) => mergeData(local, normalizeData(remoteRaw));
-const cacheAcceptedState = (state) => {
-  try {
-    cacheLocalState(window.localStorage, STORAGE_KEY, state);
-  } catch (e) {
-    window.alert("Не удалось сохранить данные на устройстве. Освободите место и скачайте резервную копию перед закрытием приложения.");
-  }
-  return state;
-};
 
-export default function BilliardsTracker() {
+export default function BilliardsTracker({ workspace }) {
+  const localStore = workspace.storage;
+  const localAdapter = useMemo(() => storageAdapter(localStore), [localStore]);
+  const readLocal = (key) => {
+    try {
+      return localStore.getItem(key);
+    } catch (e) {
+      return null;
+    }
+  };
+  const writeLocal = (key, value) => {
+    try {
+      if (value) localStore.setItem(key, value);
+      else localStore.removeItem(key);
+    } catch (e) {
+      // storage unavailable
+    }
+  };
+
+  const cacheAcceptedState = (state) => {
+    try {
+      cacheLocalState(localStore, STORAGE_KEY, state);
+    } catch (e) {
+      window.alert("Не удалось сохранить данные на устройстве. Освободите место и скачайте резервную копию перед закрытием приложения.");
+    }
+    return state;
+  };
+
+
   const [data, setData] = useState(loadInitial());
   const [loaded, setLoaded] = useState(false);
   const [avatarPlayerId, setAvatarPlayerId] = useState(null);
@@ -163,8 +166,8 @@ export default function BilliardsTracker() {
   const [manualBreaker, setManualBreaker] = useState(null);
   const [nameInput, setNameInput] = useState("");
   const [selected, setSelected] = useState([]);
-  const [tab, setTab] = useState("play");
-  const [settingsPage, setSettingsPage] = useState(null);
+  const [tab, setTab] = useState(workspace.initialAccount ? "settings" : "play");
+  const [settingsPage, setSettingsPage] = useState(workspace.initialAccount ? "account" : null);
   const [statsView, setStatsView] = useState("players");
   const [matchMenu, setMatchMenu] = useState(null);
   const [hapticsTestStatus, setHapticsTestStatus] = useState("");
@@ -187,8 +190,8 @@ export default function BilliardsTracker() {
   const [staleDismissedId, setStaleDismissedId] = useState(null);
   const [minuteTick, setMinuteTick] = useState(() => Date.now());
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [tableLit, setTableLit] = useState(false);
-  const [menuVisible, setMenuVisible] = useState(false);
+  const [tableLit, setTableLit] = useState(!!workspace.initialAccount);
+  const [menuVisible, setMenuVisible] = useState(!!workspace.initialAccount);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [openRuleKey, setOpenRuleKey] = useState(null);
   const [ballValue, setBallValue] = useState(1);
@@ -198,7 +201,7 @@ export default function BilliardsTracker() {
   const [profilePid, setProfilePid] = useState(null);
   const [safetyCopies, setSafetyCopies] = useState(() => {
     try {
-      return listSafetyCopies(window.localStorage);
+      return listSafetyCopies(localStore);
     } catch (e) {
       return [];
     }
@@ -216,13 +219,13 @@ export default function BilliardsTracker() {
   const [gameMode, setGameMode] = useState(false);
   const [editMatchId, setEditMatchId] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
-  const [authSession, setAuthSession] = useState(null);
+  const authSession = workspace.session;
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authStatus, setAuthStatus] = useState("idle"); // idle | sending | sent | verifying | error
   const [authError, setAuthError] = useState("");
   const [authCode, setAuthCode] = useState("");
-  const [club, setClub] = useState(null);
+  const club = workspace.club;
   const [clubBusy, setClubBusy] = useState(false);
   const [, setSafetyTick] = useState(0);
   const clubBlockRef = useRef(null);
@@ -235,7 +238,7 @@ export default function BilliardsTracker() {
   const NAME_KEY = "billiards-display-name";
   const [myName, setMyName] = useState(() => {
     try {
-      return window.localStorage.getItem(NAME_KEY) || "";
+      return localStore.getItem(NAME_KEY) || "";
     } catch (e) {
       return "";
     }
@@ -301,7 +304,7 @@ export default function BilliardsTracker() {
     (async () => {
       let local = null;
       try {
-        const res = await window.storage.get(STORAGE_KEY, false);
+        const res = await localAdapter.get(STORAGE_KEY, false);
         if (res && res.value) {
           const raw = JSON.parse(res.value);
           local = normalizeData(raw);
@@ -313,29 +316,7 @@ export default function BilliardsTracker() {
         // no local data yet
       }
 
-      let cloud = null;
-      try {
-        const cloudRes = await loadFromCloud();
-        if (cloudRes && cloudRes.data) cloud = normalizeData({ ...cloudRes.data, updatedAt: cloudRes.updatedAt });
-      } catch (e) {
-        // cloud unavailable or empty
-      }
-
-      // Both copies are this user's own data — merge them so nothing done on
-      // either side is lost.
-      const cloudIsNewer = cloud && (!local || (cloud.updatedAt || 0) > (local.updatedAt || 0));
-      const chosen = cloud && local ? mergeData(local, cloud) : cloud || local;
-
-      if (chosen) {
-        setData(chosen);
-        if (cloudIsNewer) {
-          try {
-            await window.storage.set(STORAGE_KEY, JSON.stringify(chosen), false);
-          } catch (e) {
-            // best effort
-          }
-        }
-      }
+      if (local) setData(local);
       setLoaded(true);
     })();
   }, []);
@@ -352,8 +333,8 @@ export default function BilliardsTracker() {
   useEffect(() => {
     if (!loaded) return;
     try {
-      maybeAutoSafetyCopy(window.localStorage, data);
-      setSafetyCopies(listSafetyCopies(window.localStorage));
+      maybeAutoSafetyCopy(localStore, data);
+      setSafetyCopies(listSafetyCopies(localStore));
     } catch (e) {
       // storage unavailable — not critical
     }
@@ -379,49 +360,20 @@ export default function BilliardsTracker() {
       window.history.replaceState(null, "", window.location.pathname + window.location.search);
     }
     let active = true;
-    (async () => {
-      const session = await getSession();
-      if (active) setAuthSession(session);
-    })();
-    const unsubscribe = onAuthChange((session) => {
-      setAuthSession(session);
-      if (session) { setAuthStatus("idle"); setAuthError(""); }
-      if (!session) setClub(null);
-    });
     const stopNativeAuth = onNativeAuthReturn({
       onSuccess: () => { setAuthStatus("idle"); setAuthError(""); },
       onError: (error) => { setAuthStatus("error"); setAuthError(error.message); setTab("settings"); setSettingsPage("club"); },
     });
     return () => {
       active = false;
-      unsubscribe();
       stopNativeAuth();
     };
   }, []);
 
   useEffect(() => {
-    if (!authSession) return;
-    let active = true;
-    (async () => {
-      try {
-        const myClub = await getMyClub();
-        if (active && myClub) {
-          if (blockedClubs(clubSafetyStorage, authSession.user.id).some(x => x.id === myClub.id)) {
-            setClubError("Этот клуб заблокирован на устройстве");
-          } else setClub(myClub);
-        }
-      } catch (e) {
-        // not critical — user just isn't in a club yet
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [authSession]);
-
-  useEffect(() => {
     if (!club || !clubTermsAccepted) return;
     let active = true;
+    setClubSync("pending");
     (async () => {
       try {
         const remote = await fetchClubState(club.id);
@@ -431,20 +383,20 @@ export default function BilliardsTracker() {
           // offline since then. Joining fresh, the club's data replaces personal data.
           let synced = null;
           try {
-            synced = window.localStorage.getItem(CLUB_SYNCED_KEY);
+            synced = localStore.getItem(CLUB_SYNCED_KEY);
           } catch (e) {
             // storage unavailable
           }
           setData((prev) => cacheAcceptedState(synced === club.id ? mergeData(prev, remoteData) : remoteData));
           setClubSync("synced");
           try {
-            window.localStorage.setItem(CLUB_SYNCED_KEY, club.id);
+            localStore.setItem(CLUB_SYNCED_KEY, club.id);
           } catch (e) {
             // storage unavailable
           }
         }
       } catch (e) {
-        setClubError("Не удалось загрузить данные клуба");
+        if (active) { setClubError("Не удалось загрузить данные клуба. Локальные данные сохранены."); setClubSync("error"); }
       }
     })();
     const unsubscribe = subscribeClubState(club.id, (remoteData) => {
@@ -508,6 +460,51 @@ export default function BilliardsTracker() {
   dataRef.current = data;
   const clubInFlightRef = useRef(0);
   const clubRetryRef = useRef(null);
+  const workspaceAliveRef = useRef(true);
+  const personalBusyRef = useRef(false);
+  const personalAgainRef = useRef(false);
+  const [personalSync, setPersonalSync] = useState("pending");
+  const [personalError, setPersonalError] = useState("");
+  useEffect(() => () => { workspaceAliveRef.current = false; }, []);
+
+  const requestPersonalSync = useCallback(async (snapshot) => {
+    if (!authSession || club || !workspaceAliveRef.current) return;
+    if (workspace.offlineProfile) {
+      setPersonalSync("error"); setPersonalError("Открыта офлайн-копия аккаунта. После подключения к интернету подтвердите вход для синхронизации."); return;
+    }
+    if (personalBusyRef.current) { personalAgainRef.current = true; return; }
+    personalBusyRef.current = true;
+    setPersonalSync("pending");
+    try {
+      const merged = await pushPersonalState(authSession.user.id, snapshot || dataRef.current, mergeWithRemote);
+      if (!workspaceAliveRef.current) return;
+      setData(prev => cacheAcceptedState(mergeData(prev, merged)));
+      setPersonalSync("synced"); setPersonalError("");
+    } catch (error) {
+      if (workspaceAliveRef.current) {
+        setPersonalSync("error");
+        setPersonalError(/invalid_personal_data|invalid_club_data/.test(error?.message || '')
+          ? "Данные сохранены на устройстве, но превышают лимит или формат облачного хранилища. Скачайте резервную копию и обратитесь в поддержку."
+          : "Облако недоступно. Данные сохранены на этом устройстве; повторим синхронизацию автоматически.");
+      }
+    } finally {
+      personalBusyRef.current = false;
+      if (personalAgainRef.current && workspaceAliveRef.current) {
+        personalAgainRef.current = false;
+        requestPersonalSync(dataRef.current);
+      }
+    }
+  }, [authSession?.user?.id, club, workspace.offlineProfile]);
+
+  useEffect(() => {
+    if (!loaded || !authSession || club) return;
+    const sync = () => requestPersonalSync(dataRef.current);
+    sync();
+    const timer = setInterval(sync, 30000);
+    window.addEventListener("online", sync);
+    window.addEventListener("focus", sync);
+    return () => { clearInterval(timer); window.removeEventListener("online", sync); window.removeEventListener("focus", sync); };
+  }, [loaded, authSession?.user?.id, club, requestPersonalSync]);
 
   const pushToClub = useCallback(
     (next) => {
@@ -520,7 +517,7 @@ export default function BilliardsTracker() {
       setClubSync("pending");
       pushClubState(club.id, next, mergeWithRemote)
         .then((merged) => {
-          if (clubBlockRef.current === club.id) return;
+          if (!workspaceAliveRef.current || clubBlockRef.current === club.id) return;
           setData((prev) => cacheAcceptedState(mergeData(prev, merged)));
           clubInFlightRef.current -= 1;
           if (clubInFlightRef.current === 0 && !pendingPersistRef.current) {
@@ -529,7 +526,7 @@ export default function BilliardsTracker() {
           }
         })
         .catch(() => {
-          if (clubBlockRef.current === club.id) return;
+          if (!workspaceAliveRef.current || clubBlockRef.current === club.id) return;
           clubInFlightRef.current -= 1;
           setClubSync("error");
           setClubError("Не удалось синхронизировать с клубом — повторим автоматически");
@@ -572,23 +569,25 @@ export default function BilliardsTracker() {
       persistTimerRef.current = null;
     }
     try {
-      await window.storage.set(STORAGE_KEY, JSON.stringify(next), false);
+      await localAdapter.set(STORAGE_KEY, JSON.stringify(next), false);
     } catch (e) {
       console.error("Storage error", e);
     }
-    // Best-effort mirror to Telegram CloudStorage; silently no-ops outside Telegram.
-    saveToCloud(next).catch(() => {});
+    // Personal cloud and clubs are separate destinations.
+    if (authSession && !club && workspaceAliveRef.current) requestPersonalSync(next);
     // Best-effort mirror to the shared club, if any; the realtime subscription applies
     // remote changes via a separate setData call that never goes through persist(), so
     // there's no echo loop to guard against here.
-    if (club) pushToClub(next);
-  }, [club, pushToClub]);
+    if (club && workspaceAliveRef.current) pushToClub(next);
+  }, [club, pushToClub, requestPersonalSync]);
 
   const persist = useCallback(
     (next) => {
+      cacheAcceptedState(next);
       pendingPersistRef.current = next;
       // (deferred: persist runs inside a setData updater)
       if (club) Promise.resolve().then(() => setClubSync("pending"));
+      else if (authSession) Promise.resolve().then(() => setPersonalSync("pending"));
       if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
       persistTimerRef.current = setTimeout(flushPersist, 300);
     },
@@ -643,8 +642,8 @@ export default function BilliardsTracker() {
 
   const takeSafetyCopy = (reason) => {
     try {
-      saveSafetyCopy(window.localStorage, data, reason);
-      setSafetyCopies(listSafetyCopies(window.localStorage));
+      saveSafetyCopy(localStore, data, reason);
+      setSafetyCopies(listSafetyCopies(localStore));
     } catch (e) {
       // storage unavailable — not critical
     }
@@ -653,8 +652,8 @@ export default function BilliardsTracker() {
   const removeSafetyCopy = (copy) => {
     if (!window.confirm(`Удалить резервную копию от ${new Date(copy.ts).toLocaleString("ru-RU")}? Вернуть её будет нельзя.`)) return;
     try {
-      deleteSafetyCopy(window.localStorage, copy.ts);
-      setSafetyCopies(listSafetyCopies(window.localStorage));
+      deleteSafetyCopy(localStore, copy.ts);
+      setSafetyCopies(listSafetyCopies(localStore));
       haptic("light");
     } catch (e) {
       // storage unavailable
@@ -1363,11 +1362,13 @@ export default function BilliardsTracker() {
   };
 
   const handleSignOut = async () => {
-    await clubSignOut();
-    setAuthSession(null);
-    setClub(null);
-    setAuthStatus("idle");
-    setAuthEmail("");
+    try {
+      await flushPersist();
+      workspace.beforeSignOut();
+      await clubSignOut();
+    } catch {
+      window.alert("Не удалось выйти из аккаунта. Проверьте соединение и попробуйте снова.");
+    }
   };
 
   // Wipe everything this app keeps on the device (and in Telegram's cloud),
@@ -1393,24 +1394,35 @@ export default function BilliardsTracker() {
     const typed = window.prompt(
       "Удалить все данные приложения с этого устройства (игроки, партии, корзина, резервные копии" +
         (authSession ? ", вход в аккаунт" : "") +
-        ")? Общие данные клуба на сервере останутся.\n\nЧтобы подтвердить, напишите: удалить"
+        ")? Будут удалены локальные копии всех аккаунтов на этом устройстве. Облачные данные аккаунтов и клубов останутся.\n\nЧтобы подтвердить, напишите: удалить"
     );
     if (!typed || typed.trim().toLowerCase() !== "удалить") return;
     setWipeBusy(true);
-    if (authSession) await clubSignOut().catch(() => {});
+    if (authSession) {
+      workspace.beforeSignOut();
+      try { await clubSignOut(); }
+      catch { setWipeBusy(false); window.alert("Не удалось выйти из аккаунта. Очистка не выполнена — повторите после проверки соединения."); return; }
+    }
     await wipeLocalAndReload();
   };
 
   const deleteAccount = async () => {
     const typed = window.prompt(
-      "Удалить аккаунт навсегда?\n\n• вы выйдете из всех клубов;\n• клубы, где вы единственный участник, удалятся вместе с данными;\n• общие данные клубов с другими участниками останутся у них;\n• данные на этом устройстве тоже удалятся.\n\nЧтобы подтвердить, напишите: удалить"
+      "Удалить аккаунт навсегда?\n\n• личные данные в облаке удалятся;\n• вы выйдете из всех клубов;\n• клубы, где вы единственный участник, удалятся вместе с данными;\n• общие данные других участников останутся;\n• локальные копии этого аккаунта удалятся;\n• гостевые данные и другие аккаунты останутся.\n\nЧтобы подтвердить, напишите: удалить"
     );
     if (!typed || typed.trim().toLowerCase() !== "удалить") return;
     setWipeBusy(true);
+    const deletingUser = authSession.user.id;
+    pendingPersistRef.current = null;
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    workspaceAliveRef.current = false;
+    workspace.beforeSignOut();
     try {
       await deleteMyAccount();
-      await wipeLocalAndReload();
+      purgeUserWorkspaces(window.localStorage, deletingUser);
+      window.location.reload();
     } catch (e) {
+      workspaceAliveRef.current = true;
       setWipeBusy(false);
       window.alert(e.message || "Не удалось удалить аккаунт");
     }
@@ -1419,7 +1431,7 @@ export default function BilliardsTracker() {
   const rememberMyName = () => {
     const n = myName.trim().slice(0, 40);
     try {
-      window.localStorage.setItem(NAME_KEY, n);
+      localStore.setItem(NAME_KEY, n);
     } catch (e) {
       // not critical
     }
@@ -1465,7 +1477,7 @@ export default function BilliardsTracker() {
     setClubError("");
     try {
       const newClub = await createClub(clubNameInput.trim(), rememberMyName());
-      setClub(newClub);
+      workspace.selectClub(newClub);
       setClubNameInput("");
     } catch (e) {
       setClubError(e.message || "Не удалось создать клуб");
@@ -1484,7 +1496,7 @@ export default function BilliardsTracker() {
         await leaveClub(joined.id);
         throw new Error("Клуб заблокирован. Сначала снимите блокировку в разделе ниже.");
       }
-      setClub(joined);
+      workspace.selectClub(joined);
       setClubCodeInput("");
     } catch (e) {
       setClubError(e.message || "Не удалось присоединиться к клубу");
@@ -1540,9 +1552,9 @@ export default function BilliardsTracker() {
       await leaveClub(club.id);
       pendingPersistRef.current = null;
       if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
-      await window.storage.set(STORAGE_KEY, JSON.stringify(loadInitial()), false);
-      window.localStorage.removeItem(CLUB_SYNCED_KEY);
-      window.localStorage.removeItem(CURRENT_GAME_KEY);
+      await localAdapter.set(STORAGE_KEY, JSON.stringify(loadInitial()), false);
+      localStore.removeItem(CLUB_SYNCED_KEY);
+      localStore.removeItem(CURRENT_GAME_KEY);
       window.location.reload();
     } catch (error) {
       if (!blockStored) {
@@ -1552,12 +1564,13 @@ export default function BilliardsTracker() {
         return;
       }
       // A local block stays in place even when the server cannot be reached.
-      setClub(null);
       pendingPersistRef.current = null;
       setData(loadInitial());
       try { cacheAcceptedState(loadInitial()); } catch { /* Storage failure is reported below. */ }
       setClubError("Клуб скрыт на устройстве. Выход на сервере мог не завершиться — проверьте соединение и повторите позже.");
       setClubBusy(false);
+      window.alert("Клуб скрыт на устройстве. Выход на сервере мог не завершиться — проверьте соединение и повторите позже.");
+      workspace.selectPersonal();
     }
   };
 
@@ -1567,7 +1580,7 @@ export default function BilliardsTracker() {
     setClubBusy(true);
     try {
       await leaveClub(club.id);
-      setClub(null);
+      workspace.selectClub(null);
     } catch (e) {
       setClubError(e.message || "Не удалось покинуть клуб");
     } finally {
@@ -1960,7 +1973,7 @@ export default function BilliardsTracker() {
                 <SyncBadge status={isOffline ? "offline" : clubSync} compact />
               </div>
             )}
-            {!home && <div className="brand-row"><div><span className="brand-eyebrow">ТВОЙ БИЛЬЯРД</span><h1 className="page-heading">{tab === "play" ? "За столом" : tab === "history" ? "История" : tab === "rating" ? "Статистика" : ({club:"Клуб",appearance:"Вибрация",data:"Копии и экспорт",help:"Помощь",about:"О приложении"}[settingsPage] || "Ещё")}</h1></div></div>}
+            {!home && <div className="brand-row"><div><span className="brand-eyebrow">ТВОЙ БИЛЬЯРД</span><h1 className="page-heading">{tab === "play" ? "За столом" : tab === "history" ? "История" : tab === "rating" ? "Статистика" : ({account:"Аккаунт",club:"Клуб",appearance:"Вибрация",data:"Копии и экспорт",help:"Помощь",about:"О приложении"}[settingsPage] || "Ещё")}</h1></div></div>}
           </header>
         )}
 
@@ -3082,7 +3095,43 @@ export default function BilliardsTracker() {
               </div>)}</>
 
               {isCloudConfigured() && (
-                <>{settingsPage === "club" && (<div style={styles.card}>
+                <>{(settingsPage === "club" || settingsPage === "account") && (<div style={styles.card}>
+                  <h2 style={styles.h2}>Аккаунт и данные</h2>
+                  <p style={styles.hint} data-testid="workspace-label">
+                    {authSession ? `${authSession.user.email || "Аккаунт"} · ${club ? `Клуб «${club.name}»` : "Личные данные"}` : "На этом устройстве · без аккаунта"}
+                  </p>
+                  {authSession ? <>
+                    {!club && <p role="status">{personalSync === "synced" ? "Личные данные сохранены в облаке" : personalSync === "pending" ? "Синхронизация личных данных…" : personalError}</p>}
+                    <div style={styles.settingBtnRow}>
+                      {club ? <button style={styles.brassBtn} onClick={() => workspace.selectPersonal()}>Мои личные данные</button> : <button style={styles.ghostBtn} onClick={() => requestPersonalSync()}>Синхронизировать сейчас</button>}
+                      {!club && workspace.availableClub && <button style={styles.brassBtn} onClick={() => workspace.selectClub(workspace.availableClub)}>Открыть клуб «{workspace.availableClub.name}»</button>}
+                    </div>
+                    <p style={styles.hint}>Личные партии и данные клуба хранятся раздельно. При выходе открываются данные без аккаунта; личные данные останутся в вашем профиле.</p>
+                    {!club && <button style={styles.ghostBtn} onClick={() => {
+                      const raw = workspaceStorage(window.localStorage, 'guest').getItem(DATA_KEY);
+                      if (!raw) return window.alert("На устройстве нет гостевых данных для переноса.");
+                      if (!window.confirm("Добавить игроков и партии без аккаунта в ваши личные данные? Они будут сохранены в облаке этого аккаунта. Исходные данные на устройстве останутся.")) return;
+                      try { takeSafetyCopy("before-guest-import"); updateData(prev => mergeData(prev, normalizeData(JSON.parse(raw)))); }
+                      catch { window.alert("Не удалось прочитать данные на устройстве."); }
+                    }}>Добавить данные без аккаунта</button>}
+                    {club && <button style={styles.ghostBtn} disabled={!clubTermsAccepted || clubSync !== "synced"} onClick={() => {
+                      const raw = workspaceStorage(window.localStorage, workspaceId(authSession.user.id)).getItem(DATA_KEY);
+                      if (!raw) return window.alert("Нет личных данных для копирования.");
+                      if (!window.confirm("Скопировать личных игроков и партии в этот клуб? Их увидят все участники. Личный оригинал останется отдельно.")) return;
+                      try { takeSafetyCopy("before-personal-import"); updateData(prev => mergeData(prev, normalizeData(JSON.parse(raw)))); }
+                      catch { window.alert("Не удалось прочитать личные данные."); }
+                    }}>Скопировать личные данные в клуб</button>}
+                    {club && <button style={styles.ghostBtn} onClick={() => {
+                      if (!window.confirm("Скопировать текущих игроков и партии клуба в ваши личные данные? Это независимая копия: дальнейшие изменения клуба не будут автоматически попадать в неё.")) return;
+                      try {
+                        const personalStore = workspaceStorage(window.localStorage, workspaceId(authSession.user.id));
+                        const personal = normalizeData(JSON.parse(personalStore.getItem(DATA_KEY) || '{}'));
+                        saveSafetyCopy(personalStore, personal, "before-club-import");
+                        personalStore.setItem(DATA_KEY, JSON.stringify(mergeData(personal, data)));
+                        workspace.selectPersonal();
+                      } catch { window.alert("Не удалось сохранить копию. Проверьте свободное место."); }
+                    }}>Скопировать клуб в личные данные</button>}
+                  </> : <p style={styles.hint}>Можно играть без входа. Для восстановления личных партий на другом телефоне войдите в аккаунт. Перенос данных выполняется отдельной кнопкой после входа.</p>}
                   <h2 style={styles.h2}>Общий доступ (клуб)</h2>
                   {!authSession && (
                     <>
@@ -3158,7 +3207,7 @@ export default function BilliardsTracker() {
                   </div>}
                   {authSession && !club && (
                     <>
-                      <p style={styles.hint}>Вы вошли как {authSession.user.email}.</p>
+                      <p style={styles.hint}>{workspace.offlineProfile ? "Офлайн-копия аккаунта" : "Вы вошли как"} {authSession.user.email}.</p>
                       {clubError && <p style={{ ...styles.hint, color: COLORS.danger }}>{clubError}</p>}
                       <div style={{ marginTop: "10px" }}>
                         <p style={styles.hint}>Ваше имя в клубе (видно в истории изменений)</p>
@@ -3278,7 +3327,11 @@ export default function BilliardsTracker() {
                 <p style={styles.hint}>
                   {club
                     ? "☁️ Вы в клубе — партии хранятся ещё и на сервере клуба, поэтому не потеряются при смене телефона."
-                    : "💾 Данные хранятся только на этом устройстве. Скачайте копию или вступите в клуб, чтобы не потерять их при смене телефона."}
+                    : authSession
+                      ? personalSync === "synced"
+                        ? "☁️ Личные данные сохранены в облаке аккаунта. На другом устройстве войдите в тот же аккаунт. Клуб для этого не нужен."
+                        : "💾 Личная копия сохранена на этом устройстве. Облачное сохранение ещё не подтверждено — дождитесь синхронизации или скачайте резервную копию."
+                      : "💾 Данные хранятся только на этом устройстве. Скачайте копию или войдите в аккаунт для личного облачного сохранения."}
                 </p>
                 <div style={styles.settingBtnRow}>
                   <button style={styles.brassBtn} onClick={exportBackup}>

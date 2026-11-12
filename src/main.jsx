@@ -1,7 +1,7 @@
 import React from "react";
 import "./fonts.js";
 import { createRoot } from "react-dom/client";
-import BilliardsTracker from "./BilliardsTracker.jsx";
+import AccountWorkspace from "./AccountWorkspace.jsx";
 import ErrorBoundary from "./ErrorBoundary.jsx";
 import UpdateBanner from "./UpdateBanner.jsx";
 import PrivacyWelcome from "./PrivacyWelcome.jsx";
@@ -37,7 +37,7 @@ if (typeof window !== "undefined" && !window.storage) {
 createRoot(document.getElementById("root")).render(
   <ErrorBoundary>
     <PrivacyWelcome>
-      <BilliardsTracker />
+      <AccountWorkspace />
       <UpdateBanner />
     </PrivacyWelcome>
   </ErrorBoundary>

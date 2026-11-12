@@ -3,7 +3,7 @@ import privacyDocument from "../public/privacy.html?raw";
 import "./privacyWelcome.css";
 
 export const PRIVACY_KEY = "billiards-privacy-acknowledged";
-export const PRIVACY_VERSION = "2026-11-11";
+export const PRIVACY_VERSION = "2026-11-12";
 // Trusted, bundled policy only; never insert user or server content here.
 const policyText = privacyDocument.match(/<main>([\s\S]*?)<\/main>/)[1]
   .replace(/<a /g, '<a target="_blank" rel="noopener noreferrer" ');

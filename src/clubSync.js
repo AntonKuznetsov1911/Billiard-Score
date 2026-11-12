@@ -67,7 +67,8 @@ export async function getSession() {
 
 export async function signOut() {
   if (!supabase) return;
-  await supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut({ scope: "local" });
+  if (error) throw error;
 }
 
 // Deletes the signed-in account on the server (see supabase/account.sql):
@@ -81,7 +82,7 @@ export async function deleteMyAccount() {
     }
     throw error;
   }
-  await client.auth.signOut().catch(() => {});
+  await client.auth.signOut({ scope: "local" }).catch(() => {});
 }
 
 async function currentUser() {

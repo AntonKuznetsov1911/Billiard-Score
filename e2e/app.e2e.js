@@ -14,7 +14,7 @@ async function seed(page, data) {
   );
 }
 
-test.beforeEach(async ({ page }) => { await page.addInitScript(() => { if (sessionStorage.getItem("privacy-test-seeded")) return; sessionStorage.setItem("privacy-test-seeded", "1"); localStorage.setItem("billiards-privacy-acknowledged", "2026-11-11"); }); });
+test.beforeEach(async ({ page }) => { await page.addInitScript(() => { if (sessionStorage.getItem("privacy-test-seeded")) return; sessionStorage.setItem("privacy-test-seeded", "1"); localStorage.setItem("billiards-privacy-acknowledged", "2026-11-12"); }); });
 
 const players = [
   { id: "p1", name: "Антон", color: "#E4032E" },
@@ -389,6 +389,7 @@ test("club rules gate sync, private reports work, and blocking hides club conten
   await page.getByPlaceholder("Ваш email").fill(user.email);
   await page.getByLabel("Пароль аккаунта").fill("test-password-only");
   await page.getByRole("button", { name: "Войти по паролю", exact: true }).click();
+  await page.getByRole("button", { name: "Открыть клуб «Тестовый клуб»", exact: true }).click();
   await expect(page.getByText("Тестовый клуб", { exact: true })).toBeVisible();
   await expect(page.getByText("До принятия правил", { exact: false })).toBeVisible();
   expect(reads).toBe(0);
@@ -411,7 +412,7 @@ test("club rules gate sync, private reports work, and blocking hides club conten
   page.once("dialog", dialog => dialog.accept());
   await page.getByRole("button", { name: "Заблокировать клуб и скрыть его данные" }).click();
   await expect.poll(() => removed).toBe(true);
-  await expect.poll(async () => (await stored(page)).players).toEqual([]);
+  await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("billiards-profile/user/00000000-0000-4000-8000-000000000001/club/10000000-0000-4000-8000-000000000001/billiards-club-data"))?.players)).toEqual([]);
   await openGateIfShown(page);
   await more(page, "Клуб");
   await expect(page.getByText("Заблокированные клубы на этом устройстве:")).toBeVisible();

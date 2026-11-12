@@ -12,7 +12,7 @@ export function LineIcon({ name, size = 22 }) {
 }
 
 export function SettingsIndex({ onOpen, club }) {
-  const rows = [["club", "Клуб", club ? club.name : "Совместный счёт и приглашения"], ["appearance", "Вибрация", "Отклик при ведении счёта"], ["data", "Копии и экспорт", "JSON, таблицы, PDF и удаление данных"], ["help", "Помощь и обратная связь", "Обучение, правила и поддержка"], ["about", "О приложении", "Версия и конфиденциальность"]];
+  const rows = [["account", "Аккаунт", "Личные данные, облако и вход"], ["club", "Клуб", club ? club.name : "Совместный счёт и приглашения"], ["appearance", "Вибрация", "Отклик при ведении счёта"], ["data", "Копии и экспорт", "JSON, таблицы, PDF и удаление данных"], ["help", "Помощь и обратная связь", "Обучение, правила и поддержка"], ["about", "О приложении", "Версия и конфиденциальность"]];
   return <div className="settings-index">{rows.map(([key, label, sub]) => <button key={key} onClick={() => onOpen(key)}><span><strong>{label}</strong><small>{sub}</small></span><LineIcon name="arrow" size={18} /></button>)}</div>;
 }
 
