@@ -45,8 +45,10 @@ export default function PracticeTable({exercise:e,type,position=0,target=0,layou
     {e.layout!=="rack" && !e.noObject && !e.contactOnly && !e.placementOnly && <path fill="none" d={e.objectPath ? path([object,...e.objectPath]) : `M${obj}L${end}`} stroke="#fff8d1" strokeWidth="2.8" markerEnd={`url(#${id}-arrow)`}/>}
     {e.cuePocket && <path d={`M${ghost}L${point(e.cuePocket)}`} stroke="#8ce8ff" strokeWidth="3" strokeDasharray="7 5" markerEnd={`url(#${id}-arrow)`}/>}
     {e.afterPath && <path d={path([contact,...e.afterPath])} fill="none" stroke="#8ce8ff" strokeWidth="3" strokeDasharray="7 5" markerEnd={`url(#${id}-arrow)`}/>}
+    {!e.placementOnly && <>
     <line x1={cue[0]-ux*210} y1={cue[1]-uy*210} x2={cue[0]-ux*20} y2={cue[1]-uy*20} stroke="#795636" strokeWidth="7" strokeLinecap="round"/>
     <line x1={cue[0]-ux*180} y1={cue[1]-uy*180} x2={cue[0]-ux*20} y2={cue[1]-uy*20} stroke="#efdbad" strokeWidth="4" strokeLinecap="round"/>
+    </>}
     {e.layout==="rack" ? Array.from({length:5},(_,row)=>Array.from({length:row+1},(_,col)=>ball([(e.rackOrigin||e.object)[0]+row*.0485,(e.rackOrigin||e.object)[1]+(col-row/2)*.056],`r${row}-${col}`,1+row*(row+1)/2+col))).flat() : balls ? balls.map((p,i)=>ball(p,`pattern${i}`,i+1,false,i===target%balls.length ? 1 : .7)) : !e.noObject && ball(object,"object",type==="pool" ? 1 : null)}
     {e.layout!=="rack" && !e.noObject && !e.contactOnly && !e.placementOnly && <circle cx={ghost[0]} cy={ghost[1]} r="12" fill="none" stroke="#f7ebad" strokeWidth="1.5" strokeDasharray="3 3" opacity=".8"/>}
     {e.placementOnly && <text x="120" y={height-50} fill="#f6e8b5" fontSize="17">С–Ч–Л: {e.angles[position]}° · схема положения, не линия прицела</text>}
