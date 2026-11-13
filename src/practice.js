@@ -7,7 +7,18 @@ export const EXERCISES = [
 ];
 EXERCISES.forEach(e => {
   e.level = e.id === "draw" ? "Средний" : "Базовый";
-  e.positions = e.id === "cut" ? [[.85,.34],[.85,.48],[.85,.62],[.85,.76]] : [[1.15,.425],[.95,.525],[.75,.625],[.55,.725]];
+  if (e.id === "cut") {
+    e.positions = [[.85,.34],[.85,.48],[.85,.62],[.85,.76]];
+  } else {
+    // Для прямых ударов биток всегда находится на продолжении линии
+    // «прицельный шар — луза», с запасом для нормальной стойки.
+    const pocket = e.pocket || [2,0];
+    const dx = pocket[0] - e.object[0], dy = pocket[1] - e.object[1];
+    const length = Math.hypot(dx,dy);
+    const ux = dx / length, uy = dy / length;
+    e.positions = [.42,.60,.78,.96].map(distance => [e.object[0] - ux * distance, e.object[1] - uy * distance]);
+    e.cue = e.positions[1];
+  }
 });
 EXERCISES.push(
   { id:"long-straight",title:"Дальний прямой",goal:7,level:"Средний",cue:[.35,.825],object:[1.45,.275],tip:0,
