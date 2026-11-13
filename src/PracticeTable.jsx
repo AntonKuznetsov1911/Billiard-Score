@@ -8,13 +8,13 @@ export default function PracticeTable({exercise:e,type,position=0,target=0,layou
   const height=type==="pool" ? 564 : 500;
   const point=([x,y])=>[70+x*430,(type==="pool" ? 78 : 80)+(mirror ? 1-y : y)*(type==="pool" ? 410 : 340)];
   const patterns={
-    "side-series":Array.from({length:layoutCount},(_,i)=>{const half=layoutCount/2,j=i%half;return [1+(j-(half-1)/2)*.07,i<half ? .24 : .76];}),
+    "side-series":Array.from({length:layoutCount},(_,i)=>{const half=layoutCount/2,j=i%half;return [1+(j-(half-1)/2)*.065,i<half ? .38 : .62];}),
     line:Array.from({length:6},(_,i)=>[.45+i*.22,.5]),
     cross:(layoutCount===4 ? [[1,.22],[1,.78],[.55,.5],[1.45,.5]] : [[1,.22],[1,.38],[1,.62],[1,.78],[.55,.5],[.75,.5],[1.25,.5],[1.45,.5]]),
     clearance:[[.4,.22],[.75,.68],[1.15,.2],[1.48,.7],[1.72,.35],[.32,.85]],
   };
   const balls=patterns[e.layout];
-  const object=balls ? balls[target%balls.length] : e.object;
+  const object=balls ? balls[target%balls.length] : (e.object || e.cue || [1,.5]);
   const pocket=balls ? (e.layout==="side-series" ? [1,object[1]<.5 ? 0 : 1] : [object[0]<1 ? 0 : 2,object[1]<.5 ? 0 : 1]) : e.objectAim || e.pocket || [2,0];
   const start=e.positions?.[position] || e.cue;
   const cue=point(start),obj=point(object);
