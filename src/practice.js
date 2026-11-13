@@ -90,13 +90,13 @@ EXERCISES.forEach(e=>{
  if(["side-series","line","cross","clearance"].includes(e.layout))e.series=true;
 });
 const spinLessons=[
- {id:"svoyak-braking-spin",title:"Свояк: нижний тормозящий винт",angles:[140,145],tip:.27,tipX:-.22,
+ {id:"svoyak-braking-spin",title:"Свояк: нижний тормозящий винт",angles:[132,137],tip:.27,tipX:-.22,objectPosition:[1.55,.18],targetPocket:[2,0],
   instruction:"Это свояк: цель — забить биток после контакта с чужим шаром, а не забить чужой. Угол С–Ч–Л около 140–145°, начальная резка — полшара. Нижний боковой винт и мягкий темп помогают изменить выход битка после контакта; чужой шар служит точкой столкновения. Для зеркальной позиции боковой винт меняется на противоположный.",tipLabel:"Биток — в лузу после контакта; чужой шар — объект столкновения. Глубина винта — стартовый ориентир, не точная величина."},
- {id:"svoyak-upper-side",title:"Свояк в среднюю: верхний боковой",angles:[110,120],tip:-.27,tipX:-.22,
+ {id:"svoyak-upper-side",title:"Свояк в среднюю: верхний боковой",angles:[110,120],tip:-.27,tipX:-.22,objectPosition:[.88,.14],targetPocket:[1,0],
   instruction:"Это свояк в среднюю: цель — забить биток после контакта с чужим шаром. Угол С–Ч–Л около 110–120°, начальная резка — полшара. Верхнее и боковое вращение подбирают совместно для выхода битка в выбранную среднюю лузу. Чужой шар не является целью этой стрелки. Зеркальная сторона требует противоположного бокового.",tipLabel:"Биток — в среднюю после контакта; чужой шар остаётся точкой столкновения."},
 ];
 for(const e of spinLessons){
- const object=[.88,.14],pocket=[1,0],v=[pocket[0]-object[0],pocket[1]-object[1]],a=Math.atan2(v[1],v[0]);
+ const object=e.objectPosition || [.88,.14],pocket=e.targetPocket || [1,0],v=[pocket[0]-object[0],pocket[1]-object[1]],a=Math.atan2(v[1],v[0]);
  const positions=e.angles.map(deg=>[object[0]+.5*Math.cos(a+deg*Math.PI/180),object[1]+.5*Math.sin(a+deg*Math.PI/180)]);
  EXERCISES.push({...e,types:["russian"],group:"Разбой и свояки",level:"Средний",goal:5,object,cue:positions[0],positions,cuePocket:pocket,placementOnly:true,
   success:"Биток забит в указанную среднюю лузу. Отдельно запишите, был ли недокат, перебор или ошибка толщины."});
