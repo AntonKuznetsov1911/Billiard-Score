@@ -51,9 +51,10 @@ export default function PracticeTable({exercise:e,type,position=0,target=0,layou
     </>}
     {e.layout==="rack" ? Array.from({length:5},(_,row)=>Array.from({length:row+1},(_,col)=>ball([(e.rackOrigin||e.object)[0]+row*.0485,(e.rackOrigin||e.object)[1]+(col-row/2)*.056],`r${row}-${col}`,1+row*(row+1)/2+col))).flat() : balls ? balls.map((p,i)=>ball(p,`pattern${i}`,i+1,false,i===target%balls.length ? 1 : .7)) : !e.noObject && ball(object,"object",type==="pool" ? 1 : null)}
     {e.layout!=="rack" && !e.noObject && !e.contactOnly && !e.placementOnly && <circle cx={ghost[0]} cy={ghost[1]} r="12" fill="none" stroke="#f7ebad" strokeWidth="1.5" strokeDasharray="3 3" opacity=".8"/>}
-    {e.placementOnly && <text x="120" y={height-50} fill="#f6e8b5" fontSize="17">С–Ч–Л: {e.angles[position]}° · схема положения, не линия прицела</text>}
+    {e.placementOnly && <text x="120" y={height-50} fill="#f6e8b5" fontSize="17">Б → Ч → лузa · угол С–Ч–Л: {e.angles[position]}° · стрелка после контакта — путь битка</text>}
     {e.rackContact && <circle cx={obj[0]} cy={obj[1]} r="17" fill="none" stroke="#ffcf63" strokeWidth="2"/>}
     {ball(start,"cue",null,true)}
-    <text x={cue[0]+18} y={cue[1]-13} fontSize="24" fontStyle="italic" fill="white">{e.positions ? position+1 : "Б"}</text>
+    <text x={cue[0]+18} y={cue[1]-13} fontSize="24" fontStyle="italic" fill="white">Б</text>
+    {!e.noObject && <text x={obj[0]+18} y={obj[1]-13} fontSize="24" fontStyle="italic" fill="#fff3b0">Ч</text>}
   </svg>;
 }
