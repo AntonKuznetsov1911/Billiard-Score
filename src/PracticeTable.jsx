@@ -3,7 +3,7 @@ import russianTable from "./assets/training-russian.webp";
 import poolTable from "./assets/training-pool.webp";
 import {ghostBall} from "./practice.js";
 
-export default function PracticeTable({exercise:e,type,position=0,target=0,layoutCount=6,mirror=false}) {
+export default function PracticeTable({exercise:e,type,position=0,target=0,layoutCount=6,mirror=false,editable=false,customLayout,onMoveBall}) {
   const id=useId().replace(/:/g,"");
   const height=type==="pool" ? 564 : 500;
   const point=([x,y])=>[70+x*430,(type==="pool" ? 78 : 80)+(mirror ? 1-y : y)*(type==="pool" ? 410 : 340)];
@@ -14,9 +14,9 @@ export default function PracticeTable({exercise:e,type,position=0,target=0,layou
     clearance:[[.4,.22],[.75,.68],[1.15,.2],[1.48,.7],[1.72,.35],[.32,.85]],
   };
   const balls=patterns[e.layout];
-  const object=balls ? balls[target%balls.length] : (e.object || e.cue || [1,.5]);
+  const object=customLayout?.object || (balls ? balls[target%balls.length] : (e.object || e.cue || [1,.5]));
   const pocket=balls ? (e.layout==="side-series" ? [1,object[1]<.5 ? 0 : 1] : [object[0]<1 ? 0 : 2,object[1]<.5 ? 0 : 1]) : e.objectAim || e.pocket || [2,0];
-  const start=e.positions?.[position] || e.cue;
+  const start=customLayout?.cue || e.positions?.[position] || e.cue;
   const cue=point(start),obj=point(object);
   const contact=e.placementOnly ? object : e.layout==="rack" && !e.rackContact ? object : ghostBall(object,pocket,.028);
   const ghost=point(contact),end=point(pocket);
@@ -24,9 +24,11 @@ export default function PracticeTable({exercise:e,type,position=0,target=0,layou
   const direction=point(e.cuePath?.[0] || contact);
   const dx=direction[0]-cue[0],dy=direction[1]-cue[1],length=Math.hypot(dx,dy),ux=dx/length,uy=dy/length;
   const path=points=>points.map((p,i)=>`${i ? "L" : "M"}${point(p)}`).join("");
-  function ball(p,key,number=null,isCue=false,opacity=1) {
+  function ball(p,key,number=null,isCue=false,opacity=1,moveable=false,ballKey=null) {
     const [x,y]=point(p);
-    return <g key={key} opacity={opacity} filter={`url(#${id}-shadow)`}><circle cx={x} cy={y} r="12" fill={`url(#${id}-${!isCue && type==="pool" ? "yellow" : "white"})`} stroke="#849d87" strokeWidth=".8"/>{isCue ? <path d={`M${x-5},${y}h10M${x},${y-5}v10`} stroke="#48675a" strokeWidth="1.5"/> : number!==null && <><circle cx={x} cy={y} r="7" fill="#fffbea"/><text x={x} y={y+4} textAnchor="middle" fontSize="11" fontWeight="700" fill="#21392e">{number}</text></>}<ellipse cx={x-3} cy={y-5} rx="4" ry="2" fill="white" opacity=".7"/></g>;
+    const onPointerDown=moveable ? ev=>{ev.preventDefault();ev.currentTarget.setPointerCapture(ev.pointerId);} : undefined;
+    const onPointerMove=moveable ? ev=>{if(ev.buttons!==1)return;const svg=ev.currentTarget.ownerSVGElement,rect=svg.getBoundingClientRect(),sx=1000/rect.width,sy=height/rect.height;const px=(ev.clientX-rect.left)*sx,py=(ev.clientY-rect.top)*sy;const nx=Math.max(.12,Math.min(1.88,(px-70)/430)),ny=Math.max(.08,Math.min(.92,(py-(type==="pool"?78:80))/(type==="pool"?410:340)));onMoveBall?.(ballKey|| (isCue?"cue":"object"),[nx,mirror?1-ny:ny]);} : undefined;
+    return <g key={key} opacity={opacity} filter={`url(#${id}-shadow)`} onPointerDown={onPointerDown} onPointerMove={onPointerMove} style={moveable?{cursor:"grab",touchAction:"none"}:undefined}><circle cx={x} cy={y} r="12" fill={`url(#${id}-${!isCue && type==="pool" ? "yellow" : "white"})`} stroke="#849d87" strokeWidth=".8"/>{isCue ? <path d={`M${x-5},${y}h10M${x},${y-5}v10`} stroke="#48675a" strokeWidth="1.5"/> : number!==null && <><circle cx={x} cy={y} r="7" fill="#fffbea"/><text x={x} y={y+4} textAnchor="middle" fontSize="11" fontWeight="700" fill="#21392e">{number}</text></>}<ellipse cx={x-3} cy={y-5} rx="4" ry="2" fill="white" opacity=".7"/></g>;
   }
   return <svg className="practice-table" viewBox={`0 0 1000 ${height}`} role="img" aria-label={`Расстановка: ${e.title}. Кий, шары и направления ударов.`}>
     <defs>
@@ -49,10 +51,10 @@ export default function PracticeTable({exercise:e,type,position=0,target=0,layou
     <line x1={cue[0]-ux*210} y1={cue[1]-uy*210} x2={cue[0]-ux*20} y2={cue[1]-uy*20} stroke="#795636" strokeWidth="7" strokeLinecap="round"/>
     <line x1={cue[0]-ux*180} y1={cue[1]-uy*180} x2={cue[0]-ux*20} y2={cue[1]-uy*20} stroke="#efdbad" strokeWidth="4" strokeLinecap="round"/>
     </>}
-    {e.layout==="rack" ? Array.from({length:5},(_,row)=>Array.from({length:row+1},(_,col)=>ball([(e.rackOrigin||e.object)[0]+row*.0485,(e.rackOrigin||e.object)[1]+(col-row/2)*.056],`r${row}-${col}`,1+row*(row+1)/2+col))).flat() : balls ? balls.map((p,i)=>ball(p,`pattern${i}`,i+1,false,i===target%balls.length ? 1 : .7)) : !e.noObject && ball(object,"object",type==="pool" ? 1 : null)}
+    {e.layout==="rack" ? Array.from({length:5},(_,row)=>Array.from({length:row+1},(_,col)=>{const n=1+row*(row+1)/2+col,p=customLayout?.balls?.[n-1]||[(e.rackOrigin||e.object)[0]+row*.0485,(e.rackOrigin||e.object)[1]+(col-row/2)*.056];return ball(p,`r${row}-${col}`,n,false,1,editable,`ball-${n}`);})).flat() : balls ? balls.map((p,i)=>ball(customLayout?.balls?.[i]||p,`pattern${i}`,i+1,false,i===target%balls.length ? 1 : .7,editable,`ball-${i+1}`)) : !e.noObject && ball(object,"object",type==="pool" ? 1 : null,false,1,editable,"object")}
     {e.layout!=="rack" && !e.noObject && !e.contactOnly && !e.placementOnly && <circle cx={ghost[0]} cy={ghost[1]} r="12" fill="none" stroke="#f7ebad" strokeWidth="1.5" strokeDasharray="3 3" opacity=".8"/>}
     {e.placementOnly && <text x="120" y={height-50} fill="#f6e8b5" fontSize="17">Б → Ч → лузa · угол С–Ч–Л: {e.angles[position]}° · стрелка после контакта — путь битка</text>}
     {e.rackContact && <circle cx={obj[0]} cy={obj[1]} r="17" fill="none" stroke="#ffcf63" strokeWidth="2"/>}
-    {ball(start,"cue",null,true)}
+    {ball(start,"cue",null,true,1,editable)}
   </svg>;
 }

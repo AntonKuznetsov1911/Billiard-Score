@@ -373,9 +373,19 @@ function sanitizeActiveGames(list, legacy, ended) {
 export function normalizeData(input) {
   const parsed = isObj(input) ? input : {};
   const endedGames = cleanIds(parsed.endedGames, ENDED_LIMIT);
+  const practiceLayouts={};
+  if(isObj(parsed.practiceLayouts)) for(const [key,value] of Object.entries(parsed.practiceLayouts).slice(0,200)) {
+    if(typeof key!=="string" || key.length>160 || !isObj(value)) continue;
+    const point=p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)?[Math.max(.05,Math.min(1.95,p[0])),Math.max(.05,Math.min(.95,p[1]))]:null;
+    const layout={};
+    for(const field of ["cue","object"]) { const p=point(value[field]);if(p)layout[field]=p; }
+    if(Array.isArray(value.balls)) layout.balls=value.balls.slice(0,20).map(point).filter(Boolean);
+    if(Object.keys(layout).length) practiceLayouts[key]=layout;
+  }
   return {
     practiceSessions: cleanPractice(parsed.practiceSessions),
     practiceResetAt: cleanStamp(parsed.practiceResetAt),
+    practiceLayouts,
     players: sanitizePlayers(parsed.players),
     matches: sanitizeMatches(parsed.matches),
     trash: sanitizeTrash(parsed.trash),
@@ -561,6 +571,7 @@ export function mergeData(a, b) {
     metaAt: Math.max(cleanStamp(older.metaAt), cleanStamp(newer.metaAt)),
     practiceSessions: mergePractice(older.practiceSessions, newer.practiceSessions, Math.max(older.practiceResetAt || 0, newer.practiceResetAt || 0)),
     practiceResetAt: Math.max(older.practiceResetAt || 0, newer.practiceResetAt || 0),
+    practiceLayouts:{...older.practiceLayouts,...newer.practiceLayouts},
     updatedAt: Math.max(older.updatedAt || 0, newer.updatedAt || 0),
   };
 }

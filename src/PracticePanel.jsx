@@ -15,7 +15,12 @@ export default function PracticePanel({data, updateData, onBack}) {
   const [position,setPosition]=useState(0);
   const [target,setTarget]=useState(0);
   const [total,setTotal]=useState(null);
+  const [editingLayout,setEditingLayout]=useState(false);
+  const [customLayout,setCustomLayout]=useState(null);
   const type=data.gameType || "russian";
+  const savedLayouts=data.practiceLayouts||{};
+  const layoutKey=`${type}:${exerciseId}`;
+  const activeLayout=customLayout??savedLayouts[layoutKey]??null;
   const catalog=exercisesFor(type);
   const exercise=catalog.find(e=>e.id===exerciseId);
   const runs=(data.practiceSessions||[]).filter(r=>r.gameType===type && (r.playerId||"")===playerId);
@@ -53,7 +58,8 @@ export default function PracticePanel({data, updateData, onBack}) {
     <label>Для кого тренировка<select aria-label="Игрок тренировки" value={playerId} onChange={e=>{setPlayerId(e.target.value);setTotal(null);}}><option value="">Без имени</option>{data.players.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
     {!exercise && <><button className="practice-entry" onClick={()=>setSchool(true)}>Школа бильярда<small>Прицеливание, техника и наглядные уроки</small></button><div className="learning-filters">{["Все","Основы","Серии","Борта",...(type==="russian" ? ["Разбой и свояки"] : [])].map(g=><button key={g} aria-pressed={group===g} onClick={()=>setGroup(g)}>{g}</button>)}</div></>}
     {!exercise ? <div className="practice-catalog">{catalog.filter(e=>group==="Все" || (e.group||"Основы")===group).map((e,i)=>{const history=runs.filter(r=>r.exerciseId===e.id);const complete=history.filter(r=>attempts(r).length===(r.limit||10));const latest=history[0];const best=complete.slice().sort((a,b)=>attempts(b).filter(s=>s.success).length/(b.limit||10)-attempts(a).filter(s=>s.success).length/(a.limit||10)||(b.limit||10)-(a.limit||10))[0];return <button key={e.id} onClick={()=>{setExerciseId(e.id);setPosition(0);setTarget(0);setTotal(null);setMirror(false);setLayoutCount(e.layout==="cross" ? 4 : e.layout==="side-series" ? 12 : 6);}}><span className="practice-number">{String(i+1).padStart(2,"0")}</span><span><strong>{e.title}</strong><small>{e.level} · {e.series ? "Серия без перестановки битка" : `Цель: ${e.goal} из 10`} · {complete.length ? `Лучший результат: ${attempts(best).filter(s=>s.success).length}/${best.limit||10}` : "Пока без результата"}{latest && attempts(latest).length<(latest.limit||10) ? ` · Продолжить ${attempts(latest).length}/${latest.limit||10}` : ""}</small></span><span>›</span></button>;})}</div> : <>
-      <Table exercise={exercise} type={type} position={position} target={target} layoutCount={layoutCount} mirror={mirror}/>
+      <Table exercise={exercise} type={type} position={position} target={target} layoutCount={layoutCount} mirror={mirror} editable={editingLayout} customLayout={activeLayout} onMoveBall={(key,value)=>{const next={...(activeLayout||{}),[key]:value};setCustomLayout(next);updateData(prev=>({...prev,practiceLayouts:{...(prev.practiceLayouts||{}),[layoutKey]:next}}));}}/>
+      <div className="practice-position"><button aria-pressed={editingLayout} onClick={()=>setEditingLayout(!editingLayout)}>{editingLayout ? "Завершить расстановку" : "Изменить расстановку шаров"}</button><button onClick={()=>{setCustomLayout(null);updateData(prev=>{const layouts={...(prev.practiceLayouts||{})};delete layouts[layoutKey];return {...prev,practiceLayouts:layouts};});}}>Вернуть исходную</button><small>{editingLayout ? "Перетаскивайте биток и все шары. Расстановка сохраняется автоматически для этого упражнения." : "Настройте каждый стол один раз — схема останется сохранённой."}</small></div>
       <div className="practice-position"><button aria-pressed={mirror} onClick={()=>setMirror(!mirror)}>Зеркальная сторона</button>
       {exercise.layout==="side-series" && <label>Расстановка<select aria-label="Количество шаров" value={layoutCount} disabled={active} onChange={e=>{setLayoutCount(Number(e.target.value));setTarget(0);}}><option value={6}>6 шаров · по 3 с каждой стороны</option><option value={12}>12 шаров · по 6 с каждой стороны</option></select><strong>На схеме {layoutCount} шаров, биток отдельно</strong></label>}
       {exercise.layout==="cross" && <div>{[4,8].map(n=><button key={n} aria-pressed={layoutCount===n} onClick={()=>{setLayoutCount(n);setTarget(0);}}>{n} шара</button>)}</div>}
