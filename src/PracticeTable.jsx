@@ -54,7 +54,5 @@ export default function PracticeTable({exercise:e,type,position=0,target=0,layou
     {e.placementOnly && <text x="120" y={height-50} fill="#f6e8b5" fontSize="17">Б → Ч → лузa · угол С–Ч–Л: {e.angles[position]}° · стрелка после контакта — путь битка</text>}
     {e.rackContact && <circle cx={obj[0]} cy={obj[1]} r="17" fill="none" stroke="#ffcf63" strokeWidth="2"/>}
     {ball(start,"cue",null,true)}
-    <text x={cue[0]+18} y={cue[1]-13} fontSize="24" fontStyle="italic" fill="white">Б</text>
-    {!e.noObject && <text x={obj[0]+18} y={obj[1]-13} fontSize="24" fontStyle="italic" fill="#fff3b0">Ч</text>}
   </svg>;
 }
