@@ -156,6 +156,10 @@
 }
 .avatar-picker h2 { margin-bottom: 14px; }
 .avatar-picker .premium-link { margin-top: 12px; }
+.portrait-photo-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
+.portrait-photo-actions .premium-link { min-height: 40px; padding: 8px 14px; border: 1px solid rgba(220, 190, 126, .45); border-radius: 999px; }
+.portrait-photo-actions .premium-link:active { transform: scale(.97); }
+.avatar-picker .premium-hint { text-align: center; margin: -6px 0 8px; }
 @media (prefers-reduced-motion: reduce) {
   .table-scene, .table-scene * {
     animation: none !important;

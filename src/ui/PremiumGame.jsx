@@ -24,7 +24,10 @@ const portraits = new Map(PLAYER_AVATARS.map(([id, , file]) => [
   id, images[`../assets/avatars/${file}.webp`],
 ]));
 
-export function PlayerPortrait({ avatar }) {
+export function PlayerPortrait({ avatar, photo }) {
+  if (typeof photo === "string" && photo.startsWith("data:image/jpeg;base64,") && photo.length <= 250_000) {
+    return <img src={photo} className="player-portrait player-portrait-image" alt="Фото игрока" width="65" height="65" />;
+  }
   const src = portraits.get(avatar);
   if (src) return <img src={src} className="player-portrait player-portrait-image" alt="" width="65" height="65" />;
   return (

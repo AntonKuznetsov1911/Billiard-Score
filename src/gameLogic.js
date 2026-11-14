@@ -103,6 +103,7 @@ export function sanitizePlayers(list) {
       id: p.id.slice(0, 64),
       name: p.name.slice(0, 40),
       avatar: PLAYER_AVATARS.some(([key]) => key === p.avatar) ? p.avatar : undefined,
+      photo: typeof p.photo === "string" && p.photo.length <= 250_000 && /^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/.test(p.photo) ? p.photo : undefined,
       color: typeof p.color === "string" && COLOR_RE.test(p.color) ? p.color : AVATAR_COLORS[i % AVATAR_COLORS.length],
     }));
 }

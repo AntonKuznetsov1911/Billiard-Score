@@ -1,4 +1,3 @@
-import PracticePanel from "./PracticePanel.jsx";
 import { PLAYER_AVATARS } from "./constants.js";
 import { PlayerPortrait, DisciplineArt } from "./ui/PremiumGame.jsx";
 import poolPyramid from "./assets/pool-pyramid.webp";
@@ -161,13 +160,13 @@ export default function BilliardsTracker({ workspace }) {
   const [data, setData] = useState(loadInitial());
   const [loaded, setLoaded] = useState(false);
   const [avatarPlayerId, setAvatarPlayerId] = useState(null);
+  const photoInputRef = useRef(null);
   const [managePlayers, setManagePlayers] = useState(false);
   const [goalOverride, setGoalOverride] = useState(null);
   const [customGoal, setCustomGoal] = useState(false);
   const [manualBreaker, setManualBreaker] = useState(null);
   const [nameInput, setNameInput] = useState("");
   const [selected, setSelected] = useState([]);
-  const [practiceOpen, setPracticeOpen] = useState(false);
   const [tab, setTab] = useState(workspace.initialAccount ? "settings" : "play");
   const [settingsPage, setSettingsPage] = useState(workspace.initialAccount ? "account" : null);
   const [statsView, setStatsView] = useState("players");
@@ -1781,12 +1780,50 @@ export default function BilliardsTracker({ workspace }) {
     reader.readAsText(file);
   };
 
+  const importPlayerPhoto = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > 12 * 1024 * 1024) {
+      window.alert("Выберите изображение JPG, PNG или WebP размером до 12 МБ.");
+      return;
+    }
+    try {
+      const imageUrl = URL.createObjectURL(file);
+      try {
+        const image = new Image();
+        image.src = imageUrl;
+        await image.decode();
+        let result = "";
+        for (const size of [384, 320, 256]) {
+          const scale = Math.min(1, size / Math.max(image.naturalWidth, image.naturalHeight));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+          canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+          canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+          for (const quality of [0.76, 0.64, 0.52]) {
+            result = canvas.toDataURL("image/jpeg", quality);
+            if (result.length <= 145_000) break;
+          }
+          if (result.length <= 145_000) break;
+        }
+        if (!result.startsWith("data:image/jpeg;base64,") || result.length > 145_000) {
+          throw new Error("Фото не удалось уменьшить до допустимого размера.");
+        }
+        updateData(prev => ({ ...prev, players: prev.players.map(p => p.id === avatarPlayerId ? { ...p, photo: result } : p) }));
+      } finally {
+        URL.revokeObjectURL(imageUrl);
+      }
+    } catch (err) {
+      window.alert(err?.message || "Не удалось обработать это изображение.");
+    }
+  };
+
   const activeGame = data.activeGames.find((g) => g.id === currentGameId) || null;
   const gameRunning = !!activeGame;
 
   const nativeBackRef = useRef(null);
   nativeBackRef.current = () => {
-    if (practiceOpen) { setPracticeOpen(false); return; }
     if (avatarPlayerId) return setAvatarPlayerId(null);
     if (resultCard) return closeResultCard();
     if (showOnboarding) return dismissOnboarding();
@@ -1846,7 +1883,7 @@ export default function BilliardsTracker({ workspace }) {
     );
   }
 
-  const home = !menuVisible || (tab === "play" && !activeGame && !practiceOpen);
+  const home = !menuVisible || (tab === "play" && !activeGame);
   const dark = !home;
   const styles = home ? makeHomeStyles(false) : makeStyles(true, data.gameType || "russian");
   const busyNow = busyPlayerIds(data.activeGames);
@@ -1978,13 +2015,12 @@ export default function BilliardsTracker({ workspace }) {
                 <SyncBadge status={isOffline ? "offline" : clubSync} compact />
               </div>
             )}
-            {!home && <div className="brand-row"><div><span className="brand-eyebrow">ТВОЙ БИЛЬЯРД</span><h1 className="page-heading">{tab === "play" ? (practiceOpen ? "Тренировка" : "За столом") : tab === "history" ? "История" : tab === "rating" ? "Статистика" : ({account:"Аккаунт",club:"Клуб",appearance:"Вибрация",data:"Копии и экспорт",help:"Помощь",about:"О приложении"}[settingsPage] || "Ещё")}</h1></div></div>}
+            {!home && <div className="brand-row"><div><span className="brand-eyebrow">ТВОЙ БИЛЬЯРД</span><h1 className="page-heading">{tab === "play" ? "За столом" : tab === "history" ? "История" : tab === "rating" ? "Статистика" : ({account:"Аккаунт",club:"Клуб",appearance:"Вибрация",data:"Копии и экспорт",help:"Помощь",about:"О приложении"}[settingsPage] || "Ещё")}</h1></div></div>}
           </header>
         )}
 
         <main style={styles.main} key={tab} className={home ? "tab-fade premium-setup" : "tab-fade"}>
-          {tab === "play" && practiceOpen && <PracticePanel data={data} updateData={updateData} onBack={() => setPracticeOpen(false)} />}
-          {tab === "play" && !practiceOpen && (
+          {tab === "play" && (
             <section>
               {!activeGame && (
                 <div className="premium-game-types">
@@ -2017,7 +2053,6 @@ export default function BilliardsTracker({ workspace }) {
                   </div>
                 </div>
               )}
-              {!activeGame && <button className="practice-entry" onClick={() => setPracticeOpen(true)}>Тренировка с упражнениями<small>Расстановка шаров · техника удара · 10 попыток</small></button>}
               {!activeGame && anyGameRunning && (
                 <div style={styles.cardFrosted}>
                   <div style={styles.liveHeader}>
@@ -2073,11 +2108,11 @@ export default function BilliardsTracker({ workspace }) {
                       return <div className="portrait-tile" key={p.id}>
                         <button className="portrait-select" aria-pressed={selected.includes(p.id)}
                           disabled={atTable && !selected.includes(p.id)} onClick={() => toggleSelect(p.id)}>
-                          <PlayerPortrait avatar={p.avatar || PLAYER_AVATARS[1 + index % (PLAYER_AVATARS.length - 1)][0]} />
+                          <PlayerPortrait avatar={p.avatar || PLAYER_AVATARS[1 + index % (PLAYER_AVATARS.length - 1)][0]} photo={p.photo} />
                           <span><PlayerBall color={playerColor(p.id)} size={11} /> {p.name}{atTable && " · за столом"}</span>
                         </button>
                         {managePlayers && <div className="portrait-tools">
-                          <button className="premium-link" aria-label={`Изменить иконку игрока ${p.name}`} onClick={() => { haptic("light"); setAvatarPlayerId(p.id); }}>Изменить иконку</button>
+                          <button className="premium-link" aria-label={`Изменить фото или иконку игрока ${p.name}`} onClick={() => { haptic("light"); setAvatarPlayerId(p.id); }}>Фото / иконка</button>
                           <button className="premium-link" aria-label={`Удалить ${p.name}`} onClick={() => removePlayer(p.id)}>×</button>
                         </div>}
                       </div>;
@@ -3724,6 +3759,8 @@ export default function BilliardsTracker({ workspace }) {
           profile={profile}
           name={nameById(profilePid)}
           color={playerColor(profilePid)}
+          photo={data.players.find(p => p.id === profilePid)?.photo}
+          onEditPortrait={() => setAvatarPlayerId(profilePid)}
           nameById={nameById}
           onClose={() => setProfilePid(null)}
           styles={styles}
@@ -3850,14 +3887,20 @@ export default function BilliardsTracker({ workspace }) {
 
       {avatarPlayerId && data.players.some(p => p.id === avatarPlayerId) && (
         <div style={styles.modalOverlay} onClick={() => setAvatarPlayerId(null)}>
-          <section className="premium-panel avatar-picker" role="dialog" aria-modal="true" aria-label="Иконка игрока" onClick={event => event.stopPropagation()}>
-            <h2>Иконка игрока</h2>
+          <section className="premium-panel avatar-picker" role="dialog" aria-modal="true" aria-label="Фото или иконка игрока" onClick={event => event.stopPropagation()}>
+            <h2>Фото или иконка игрока</h2>
+            <p className="premium-hint">Добавьте фотографию или выберите одну из готовых иконок.</p>
+            <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={importPlayerPhoto} style={{ display: "none" }} />
+            <div className="portrait-photo-actions">
+              <button className="premium-link" onClick={() => photoInputRef.current?.click()}>Добавить фото</button>
+              {data.players.find(p => p.id === avatarPlayerId)?.photo && <button className="premium-link" onClick={() => updateData(prev => ({ ...prev, players: prev.players.map(p => p.id === avatarPlayerId ? { ...p, photo: undefined } : p) }))}>Удалить фото</button>}
+            </div>
             <div className="portrait-grid">
               {PLAYER_AVATARS.map(([id, label]) => (
                 <button key={id} className="portrait-select" aria-pressed={data.players.find(p => p.id === avatarPlayerId)?.avatar === id}
                   onClick={() => {
                     haptic("light");
-                    updateData(prev => ({ ...prev, players: prev.players.map(p => p.id === avatarPlayerId ? { ...p, avatar: id } : p) }));
+                    updateData(prev => ({ ...prev, players: prev.players.map(p => p.id === avatarPlayerId ? { ...p, avatar: id, photo: undefined } : p) }));
                     setAvatarPlayerId(null);
                   }}>
                   <PlayerPortrait avatar={id} />

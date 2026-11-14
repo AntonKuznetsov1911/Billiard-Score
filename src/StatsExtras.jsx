@@ -86,7 +86,7 @@ function FormDots({ form }) {
   );
 }
 
-export function PlayerProfileModal({ profile, name, color, nameById, onClose, styles }) {
+export function PlayerProfileModal({ profile, name, color, photo, nameById, onEditPortrait, onClose, styles }) {
   const row = (label, value) => (
     <div style={styles.modalRow}>
       <span>{label}</span>
@@ -102,6 +102,10 @@ export function PlayerProfileModal({ profile, name, color, nameById, onClose, st
           <span style={{ display: "inline-block", width: 12, height: 12, borderRadius: "50%", background: color, marginRight: 8 }} />
           {name}
         </h2>
+        <div style={{ display: "grid", justifyItems: "center", gap: 8, margin: "4px 0 14px" }}>
+          {photo ? <img src={photo} alt={`Фото игрока ${name}`} style={{ width: 76, height: 76, objectFit: "cover", borderRadius: "50%", border: `2px solid ${color}` }} /> : <span aria-hidden="true" style={{ width: 76, height: 76, borderRadius: "50%", background: `${color}22`, border: `2px solid ${color}`, display: "grid", placeItems: "center", fontSize: 28 }}>♙</span>}
+          <button type="button" style={styles.cancelBtn} onClick={onEditPortrait}>{photo ? "Изменить фото или иконку" : "Добавить фото"}</button>
+        </div>
         <div style={{ margin: "4px 0 10px" }}>
           <div style={{ fontSize: "12.5px", marginBottom: "6px" }}>Форма (последние 5)</div>
           <FormDots form={profile.form} />

@@ -180,8 +180,8 @@ test("mobile layouts: both disciplines, fixed palettes and focused pages fit the
 test("player portrait, match goal and manual breaker work through the premium setup", async ({page}) => {
   await seed(page); await open(page);
   await page.getByRole("button", {name:"Управление"}).click();
-  await page.getByRole("button", {name:"Изменить иконку игрока Антон"}).click();
-  const picker = page.getByRole("dialog", {name:"Иконка игрока"});
+  await page.getByRole("button", {name:"Изменить фото или иконку игрока Антон"}).click();
+  const picker = page.getByRole("dialog", {name:"Фото или иконка игрока"});
   await expect(picker.locator("img")).toHaveCount(16);
   await expect.poll(() => picker.locator("img").evaluateAll(images => images.every(img => img.complete && img.naturalWidth > 0))).toBe(true);
   if (process.env.DESIGN_SCREENSHOT_DIR) {
@@ -192,7 +192,7 @@ test("player portrait, match goal and manual breaker work through the premium se
   await page.reload();
   await pickRussian(page);
   await page.getByRole("button", {name:"Управление"}).click();
-  await page.getByRole("button", {name:"Изменить иконку игрока Антон"}).click();
+  await page.getByRole("button", {name:"Изменить фото или иконку игрока Антон"}).click();
   await expect(page.getByRole("dialog").getByRole("button",{name:"Космонавт"})).toHaveAttribute("aria-pressed","true");
   await page.getByRole("dialog").getByRole("button",{name:"Закрыть"}).click();
   await setupPair(page);

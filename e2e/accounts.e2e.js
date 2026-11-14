@@ -1,24 +1,24 @@
 import { test, expect } from '@playwright/test';
+import path from 'node:path';
 
 const a='00000000-0000-4000-8000-000000000001', b='00000000-0000-4000-8000-000000000002';
 const club={id:'10000000-0000-4000-8000-000000000001',name:'Общий тест',code:'TESTCODE',created_by:a};
 const state=name=>({players:[{id:name,name,color:'#E4032E'}],matches:[],trash:[],activeGames:[],updatedAt:1,gameType:'russian',russianMode:'free'});
 
-test('practice: personal progress reaches a second device and stays out of guest data',async({page,context,browser})=>{
+test('profile photo syncs to a second device and stays out of guest data',async({page,context,browser})=>{
   const api=backend();await setup(context,api);await page.goto('/');await login(page,'a@example.com');
   await page.locator('nav').getByRole('button',{name:'Игра',exact:true}).click();
-  await page.getByRole('button',{name:/Тренировка с упражнениями/}).click();
-  await page.getByRole('button',{name:/01 Прямой удар/}).click();
-  await page.getByRole('button',{name:'Начать выполнение'}).click();
-  await page.getByText('Или отмечать каждый удар',{exact:true}).click();
-  await page.getByRole('button',{name:'Получилось',exact:true}).click();
-  await expect.poll(()=>api.personal.get(a)?.data.practiceSessions?.[0]?.events.length).toBe(1);
+  await page.getByRole('button',{name:'Управление',exact:true}).click();
+  await page.getByRole('button',{name:'Изменить фото или иконку игрока Личный А'}).click();
+  const chooser=page.waitForEvent('filechooser');
+  await page.getByRole('button',{name:'Добавить фото',exact:true}).click();
+  const upload=await chooser;
+  await upload.setFiles(path.resolve('src/assets/avatars/01_lev.webp'));
+  await expect.poll(()=>api.personal.get(a)?.data.players?.[0]?.photo?.startsWith('data:image/jpeg;base64,')).toBe(true);
   const other=await browser.newContext();await setup(other,api);const phone=await other.newPage();await phone.goto('/');await login(phone,'a@example.com');
   await phone.locator('nav').getByRole('button',{name:'Игра',exact:true}).click();
-  await phone.getByRole('button',{name:/Тренировка с упражнениями/}).click();
-  await phone.getByRole('button',{name:/01 Прямой удар/}).click();
-  await expect(phone.getByText('Попытки: 1 / 10',{exact:true})).toBeVisible();
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('billiards-club-data')).practiceSessions||[])).toEqual([]);
+  await expect(phone.locator('img[alt="Фото игрока"]')).toBeVisible();
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('billiards-club-data'))?.players?.[0]?.photo)).toBeUndefined();
   expect(api.personal.get(a).data.matches).toEqual([]);await other.close();
 });
 const user=id=>({id,aud:'authenticated',role:'authenticated',email:id===a?'a@example.com':'b@example.com',app_metadata:{provider:'email'},user_metadata:{},created_at:new Date().toISOString()});
