@@ -1784,8 +1784,8 @@ export default function BilliardsTracker({ workspace }) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > 12 * 1024 * 1024) {
-      window.alert("Выберите изображение JPG, PNG или WebP размером до 12 МБ.");
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > 20 * 1024 * 1024) {
+      window.alert("Выберите обычное фото JPG, PNG или WebP размером до 20 МБ — приложение само его сожмёт.");
       return;
     }
     try {
