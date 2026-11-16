@@ -159,7 +159,7 @@ export const PLAYER_AVATARS = [
   ["wolf", "Волк", "03_volk"],
   ["panther", "Пантера", "04_pantera"],
   ["gentleman", "Джентльмен", "05_dzhentlmen"],
-  ["cowboy", "Ковбой", "06_kovboy"],
+  ["cowboy", "Маэстро", "06_kovboy"],
   ["hood", "В капюшоне", "07_v_kapyushone"],
   ["samurai", "Самурай", "08_samuray"],
   ["gorilla", "Горилла", "09_gorilla"],
@@ -170,4 +170,5 @@ export const PLAYER_AVATARS = [
   ["dragon", "Дракон", "14_drakon"],
   ["eight", "Восьмёрка", "15_shar_8"],
   ["bull", "Бык", "16_byk"],
+  ["tiger", "Тигр", "17_tiger"],
 ];
