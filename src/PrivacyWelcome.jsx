@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import privacyDocument from "../public/privacy.html?raw";
 import "./privacyWelcome.css";
+import Onboarding from "./Onboarding.jsx";
 
 export const PRIVACY_KEY = "billiards-privacy-acknowledged";
 export const PRIVACY_VERSION = "2026-11-12";
@@ -14,11 +15,20 @@ export default function PrivacyWelcome({ children }) {
     catch { return false; }
   });
   const [checked, setChecked] = useState(false);
+  const [showIntro, setShowIntro] = useState(() => {
+    try { return localStorage.getItem("billiards-onboarding-pending") === "1"; }
+    catch { return false; }
+  });
   const [error, setError] = useState("");
 
   function continueToApp() {
     if (!checked) return;
     try {
+      const firstVisit = !localStorage.getItem(PRIVACY_KEY);
+      if (firstVisit && !localStorage.getItem("billiards-onboarding-v1")) {
+        localStorage.setItem("billiards-onboarding-pending", "1");
+        setShowIntro(true);
+      }
       localStorage.setItem(PRIVACY_KEY, PRIVACY_VERSION);
       setAccepted(true);
     } catch {
@@ -26,6 +36,13 @@ export default function PrivacyWelcome({ children }) {
     }
   }
 
+  if (accepted && showIntro) return <Onboarding onFinish={() => {
+    try {
+      localStorage.setItem("billiards-onboarding-v1", "1");
+      localStorage.removeItem("billiards-onboarding-pending");
+    } catch { /* Повторный показ допустим, если хранилище недоступно. */ }
+    setShowIntro(false);
+  }} />;
   if (accepted) return children;
   return (
     <main className="privacy-welcome">

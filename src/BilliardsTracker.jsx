@@ -2686,6 +2686,18 @@ export default function BilliardsTracker({ workspace }) {
                             </span>
                           ) : null}
                         </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "80px 56px 80px", alignItems: "center", justifyItems: "center", gap: "4px" }}>
+                          <button
+                            style={styles.scoreBtnMinus}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              addPoint(pid, -1);
+                            }}
+                            disabled={(activeGame.scores[pid] || 0) <= 0}
+                            aria-label={`Убрать у ${nameById(pid)}`}
+                          >
+                            −
+                          </button>
                         <span
                           key={scorePulse.pid === pid ? scorePulse.ts : "s"}
                           style={{
@@ -2705,20 +2717,8 @@ export default function BilliardsTracker({ workspace }) {
                             {activeGame.scores[pid] || 0}
                           </button>
                         </span>
-                        <div style={styles.scoreBtns}>
                           <button
-                            style={styles.scoreBtnMinus}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              addPoint(pid, -1);
-                            }}
-                            disabled={(activeGame.scores[pid] || 0) <= 0}
-                            aria-label={`Убрать у ${nameById(pid)}`}
-                          >
-                            −
-                          </button>
-                          <button
-                            style={styles.scoreBtnPlus}
+                            style={{ ...styles.scoreBtnPlus, minHeight: 48, minWidth: 80, fontSize: "16px" }}
                             onClick={(e) => {
                               e.stopPropagation();
                               addPoint(pid, isPoints ? ballValue : 1);
