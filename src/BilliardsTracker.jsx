@@ -3580,16 +3580,17 @@ export default function BilliardsTracker({ workspace }) {
 
       {victory && (
         <div
-          className="no-print"
+          className="no-print victory-screen"
+          role="dialog"
+          aria-modal="true"
+          aria-label={victory.solo ? "Итоги тренировки" : "Итоги матча"}
           style={{
             position: "fixed",
             inset: 0,
             zIndex: 55,
             display: "flex",
-            flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            padding: "24px",
             textAlign: "center",
             color: "#F3EBDA",
             background: `linear-gradient(180deg, ${
@@ -3598,7 +3599,8 @@ export default function BilliardsTracker({ workspace }) {
             animation: "fadeIn 0.3s ease",
           }}
         >
-          <div style={{ maxWidth: "380px", width: "100%" }} onClick={(e) => e.stopPropagation()}>
+          <div className="victory-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="victory-scroll">
             <div style={{ lineHeight: 1, filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.35))" }}>
               {victory.solo ? (
                 <IconTarget size={60} color="#F8F1DE" />
@@ -3732,8 +3734,14 @@ export default function BilliardsTracker({ workspace }) {
               <button style={{ ...styles.diceBtn, width: "100%" }} onClick={shareVictory}>
                 📤 Поделиться результатом
               </button>
-              <button style={{ ...styles.finishBtn, width: "100%" }} onClick={closeVictory}>
-                {victory.bracket ? "К турнирной сетке" : "К статистике"}
+              </div>
+            </div>
+            <div className="victory-footer">
+              <button
+                style={{ ...styles.brassBtn, width: "100%", minHeight: "60px", whiteSpace: "normal", lineHeight: 1.35, padding: "12px 14px" }}
+                onClick={closeVictory}
+              >
+                {victory.bracket ? "Завершить матч и перейти к сетке турнира" : "Завершить матч и перейти к статистике"}
               </button>
             </div>
           </div>

@@ -71,8 +71,8 @@ test("first run: choose a table, add players, play, undo, finish, persists", asy
   await expect(page.getByText("Партия идёт")).toBeVisible();
 
   await page.getByRole("button", { name: "Завершить партию" }).click();
-  await expect(page.getByRole("button", { name: /К статистике/ })).toBeVisible();
-  await page.getByRole("button", { name: /К статистике/ }).click();
+  await expect(page.getByRole("button", { name: /Завершить матч и перейти к статистике/ })).toBeVisible();
+  await page.getByRole("button", { name: /Завершить матч и перейти к статистике/ }).click();
   await expect.poll(async () => (await stored(page)).matches.length).toBe(1);
   const m = (await stored(page)).matches[0];
   expect(Object.values(m.scores).sort()).toEqual([0, 2]);
@@ -184,7 +184,7 @@ test("two games at once: each table keeps its own score", async ({ page }) => {
   await ordinary(page);
   await expect.poll(() => scores(page)).toEqual(["1", "0"]);
   await page.getByRole("button", { name: "Завершить партию" }).click();
-  await page.getByRole("button", { name: /К статистике/ }).click();
+  await page.getByRole("button", { name: /Завершить матч и перейти к статистике/ }).click();
   await expect.poll(async () => (await stored(page)).matches.length).toBe(1);
   const s = await stored(page);
   expect(s.activeGames).toHaveLength(1);
@@ -213,7 +213,7 @@ test("kolhoz: rounds with position change, points by ball value", async ({ page 
 
   await page.getByRole("button", { name: "Завершить партию" }).click();
   await expect(page.getByText(/Расчёт за 1 кр/)).toBeVisible();
-  await page.getByRole("button", { name: /К статистике/ }).click();
+  await page.getByRole("button", { name: /Завершить матч и перейти к статистике/ }).click();
   const m = (await stored(page)).matches[0];
   expect(m).not.toHaveProperty("stake");
   expect(m.kolhozNet).toEqual({ p4: 6, p1: -6, p3: 0 }); // Ваня забивал Антону
