@@ -1,3 +1,4 @@
+import victoryTrophy from "./assets/victory-trophy.webp";
 import { PLAYER_AVATARS } from "./constants.js";
 import { PlayerPortrait, DisciplineArt } from "./ui/PremiumGame.jsx";
 import poolPyramid from "./assets/pool-pyramid.webp";
@@ -213,6 +214,7 @@ export default function BilliardsTracker({ workspace }) {
   const [clubHistoryError, setClubHistoryError] = useState("");
   const [victory, setVictory] = useState(null);
   const [seriesPick, setSeriesPick] = useState(1);
+  const [rotateBreaker, setRotateBreaker] = useState(true);
   const [scorePulse, setScorePulse] = useState({ pid: null, ts: 0 });
   const [scoreWheelPid, setScoreWheelPid] = useState(null);
   const lastTapRef = useRef({ key: "", ts: 0 });
@@ -861,6 +863,12 @@ export default function BilliardsTracker({ workspace }) {
     setHandicaps({});
   };
 
+  const nextBreaker = (match) => {
+    if (!match?.breakerId || match.participants.length < 2) return null;
+    const index = match.participants.indexOf(match.breakerId);
+    return index < 0 ? null : match.participants[(index + 1) % match.participants.length];
+  };
+
   const startRematch = (participants, from = null) => {
     haptic("medium");
     setTableLit(true);
@@ -870,7 +878,7 @@ export default function BilliardsTracker({ workspace }) {
     const targets = gm?.target
       ? Object.fromEntries(participants.map(id => [id, from?.targets?.[id] || gm.target]))
       : null;
-    const game = newGame({ participants, gameType, mode, targets });
+    const game = newGame({ participants, gameType, mode, targets, breakerId: rotateBreaker ? nextBreaker(from) : from?.breakerId || null });
     updateData((prev) => ({ ...prev, activeGames: [...prev.activeGames, game] }));
     setCurrentGameId(game.id);
     setGameMode(false);
@@ -2005,7 +2013,21 @@ export default function BilliardsTracker({ workspace }) {
           </div>
         )}
         {!tableLit ? (
-          <DisciplineGate onPick={handleGatePick} />
+          <>
+            <DisciplineGate onPick={handleGatePick} />
+            {data.activeGames.length > 0 && (() => {
+              const game = activeGame || data.activeGames.at(-1);
+              return <button className="preview-resume" onClick={() => {
+                handleGatePick(game.gameType);
+                setCurrentGameId(game.id);
+                setGameMode(false);
+              }}>
+                <strong>Продолжить партию</strong>
+                <span>{RUSSIAN_MODES[game.mode]?.name || GAME_TYPES[game.gameType]?.label} · {game.participants.map(id => nameById(id)).join(' / ')}</span>
+                <span>{game.participants.map(id => game.scores[id] || 0).join(' : ')}</span>
+              </button>;
+            })()}
+          </>
         ) : !menuVisible ? null : (
           <div className="menu-reveal">
         {!immersive && (!home || club) && (
@@ -2672,9 +2694,12 @@ export default function BilliardsTracker({ workspace }) {
                       </div>
                     </div>
                   )}
+                  <div role="status" className="preview-save">{club
+                    ? (isOffline ? "Ожидает интернета" : { synced: "Синхронизировано", pending: "Синхронизация…", error: "Ошибка синхронизации" }[clubSync])
+                    : "Локальная партия"}</div>
                   <div style={styles.scoreboard}>
                     {(kolhoz ? kolhoz.order : activeGame.participants).map((pid) => (
-                      <div key={pid} style={{ ...styles.scoreCard, borderLeft: `4px solid ${playerColor(pid)}` }}>
+                      <div key={pid} className="preview-score-card" style={{ ...styles.scoreCard, borderLeft: `4px solid ${playerColor(pid)}` }}>
                         <div style={styles.scoreName}>
                           <PlayerBall color={playerColor(pid)} size={14} /> {nameById(pid)}
                           {gm && targetOf(pid) ? (
@@ -2700,6 +2725,8 @@ export default function BilliardsTracker({ workspace }) {
                           </button>
                         <span
                           key={scorePulse.pid === pid ? scorePulse.ts : "s"}
+                          className={scorePulse.pid === pid ? "preview-score-pulse" : undefined}
+                          
                           style={{
                             display: "inline-block",
                             animation: scorePulse.pid === pid ? "scorePop 0.32s ease" : "none",
@@ -3599,21 +3626,20 @@ export default function BilliardsTracker({ workspace }) {
             animation: "fadeIn 0.3s ease",
           }}
         >
-          <div className="victory-dialog" onClick={(e) => e.stopPropagation()}>
+          <div className="victory-dialog preview-victory" onClick={(e) => e.stopPropagation()}>
             <div className="victory-scroll">
-            <div style={{ lineHeight: 1, filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.35))" }}>
-              {victory.solo ? (
-                <IconTarget size={60} color="#F8F1DE" />
-              ) : (
-                <IconTrophy size={60} color="#F8F1DE" />
-              )}
-            </div>
+            {victory.solo && <IconTarget size={60} color="#F8F1DE" />}
             <h2 style={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: "26px", margin: "10px 0 4px", color: "#F8F1DE", textShadow: "0 2px 8px rgba(0,0,0,0.4)" }}>
-              {victory.solo
-                ? "Тренировка завершена!"
-                : victory.series && victory.series.champion
-                ? `${nameById(victory.winnerId)} выиграл матч!`
-                : `Победа: ${nameById(victory.winnerId)}!`}
+              {victory.solo ? "Тренировка завершена!" : (
+                <>
+                  {victory.series?.champion ? "" : "Победитель: "}
+                  {nameById(victory.winnerId)}
+                  <span aria-hidden="true" style={{ display: "inline-flex", verticalAlign: "middle", marginInlineStart: 8 }}>
+                    <img src={victoryTrophy} alt="" width={34} height={36} style={{ objectFit: "contain" }} />
+                  </span>
+                  {victory.series?.champion ? " выиграл матч" : ""}
+                </>
+              )}
             </h2>
             <div style={{ fontFamily: "'Space Mono', monospace", fontSize: "46px", fontWeight: 700, margin: "10px 0", textShadow: "0 2px 8px rgba(0,0,0,0.4)" }}>
               {victory.kolhozNet
@@ -3721,9 +3747,12 @@ export default function BilliardsTracker({ workspace }) {
             )}
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "16px" }}>
               {!victory.bracket && (!victory.series || !victory.series.champion) && !victory.solo && (
+                <div>
+                  {nextBreaker(victory) && <label className="preview-breaker"><input type="checkbox" checked={rotateBreaker} onChange={e => setRotateBreaker(e.target.checked)} /> Сменить разбивающего · {nameById(rotateBreaker ? nextBreaker(victory) : victory.breakerId)}</label>}
                 <button style={{ ...styles.brassBtn, width: "100%" }} onClick={() => startRematch(victory.participants, victory)}>
                   🔄 Реванш{victory.series ? " (следующая партия матча)" : ""}
                 </button>
+                </div>
               )}
               {victory.solo && (
                 <button style={{ ...styles.brassBtn, width: "100%" }} onClick={() => startRematch(victory.participants, victory)}>

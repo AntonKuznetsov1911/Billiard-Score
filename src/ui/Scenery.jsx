@@ -144,6 +144,7 @@ export function TableArt({ gameType, lit, dark, onLightReady }) {
           {layer(tableOffPhoto, !lit)}
           {layer(tableRussianPhoto, lit && !isPool)}
           {layer(tablePoolPhoto, lit && isPool)}
+          {lit && <div className="preview-table-light" style={{ background: isPool ? "radial-gradient(ellipse at 50% 20%, #9bcaff33, transparent 62%)" : "radial-gradient(ellipse at 50% 20%, #ffc97833, transparent 62%)" }} />}
         </div>
       </div>
       {dark && (
