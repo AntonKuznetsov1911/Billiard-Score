@@ -1,7 +1,6 @@
 import victoryTrophy from "./assets/victory-trophy.webp";
 import { PLAYER_AVATARS } from "./constants.js";
 import { PlayerPortrait, DisciplineArt } from "./ui/PremiumGame.jsx";
-import poolPyramid from "./assets/pool-pyramid.webp";
 import "./premium.css";
 import { cacheAcceptedState as cacheLocalState } from "./localCache.js";
 import { validateBackupFile, parseBackup } from "./backupImport.js";
@@ -2044,37 +2043,6 @@ export default function BilliardsTracker({ workspace }) {
         <main style={styles.main} key={tab} className={home ? "tab-fade premium-setup" : "tab-fade"}>
           {tab === "play" && (
             <section>
-              {!activeGame && (
-                <div className="premium-game-types">
-                  <div style={styles.gameTypeSwitch} role="tablist" aria-label="Дисциплина">
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={(data.gameType || "russian") !== "pool"}
-                      style={{
-                        ...styles.gameTypeSwitchBtn,
-                        ...((data.gameType || "russian") !== "pool" ? styles.gameTypeSwitchBtnActive : {}),
-                      }}
-                      onClick={() => setGameType("russian")}
-                    >
-                      <GameIcon type="russian" size={18} /> Русский бильярд
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={(data.gameType || "russian") === "pool"}
-                      style={{
-                        ...styles.gameTypeSwitchBtn,
-                        ...((data.gameType || "russian") === "pool" ? styles.gameTypeSwitchBtnActive : {}),
-                      }}
-                      onClick={() => setGameType("pool")}
-                    >
-                      <span>Pool</span>
-                      <img src={poolPyramid} className="gate-icon gate-icon-pyramid" alt="" width="24" height="24" />
-                    </button>
-                  </div>
-                </div>
-              )}
               {!activeGame && anyGameRunning && (
                 <div style={styles.cardFrosted}>
                   <div style={styles.liveHeader}>
